@@ -1,0 +1,48 @@
+name: Daily Warren Buffett Stock Analysis
+
+on:
+  schedule:
+    # Run at 10:30 UTC (4:00 PM IST) every weekday (Monday-Friday)
+    - cron: '30 10 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas yfinance lxml html5lib beautifulsoup4
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Fix SSL Certificate Issues
+        run: |
+          echo "import ssl" > ssl_fix.py
+          echo "ssl._create_default_https_context = ssl._create_unverified_context" >> ssl_fix.py
+          sed -i '1s/^/import ssl\nssl._create_default_https_context = ssl._create_unverified_context\n/' data_collector.py
+
+      - name: Run data collection
+        run: python data_collector.py
+        timeout-minutes: 120
+
+      - name: Run Buffett analysis
+        run: python buffett_analyzer.py
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./output
+          force_orphan: true
+          full_commit_message: "Update stock analysis for $(date '+%Y-%m-%d')"
