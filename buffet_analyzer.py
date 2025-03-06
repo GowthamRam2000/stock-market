@@ -30,7 +30,7 @@ def analyze_industry_dynamics(symbol, data):
 
     moderate_industries = [
         'Healthcare', 'Technology', 'Communication Services', 'Industrial',
-        'Energy', 'Telecom', 'Real Estate','Pharmaceutical'
+        'Energy', 'Telecom', 'Real Estate', 'Pharmaceutical'
     ]
 
     unfavorable_industries = [
@@ -75,13 +75,13 @@ def analyze_regulatory_environment(symbol, data):
     ]
 
     challenging_regulatory_sectors = [
-         'Healthcare', 'Telecom', 'Energy', 'Banking',
+        'Healthcare', 'Telecom', 'Energy', 'Banking',
         'Technology', 'Oil & Gas'
     ]
 
     if '.NS' in symbol:
         india_favorable_sectors = [
-            'IT Services', 'Technology', 'Consumer Goods', 'Automotive','Pharmaceutical'
+            'IT Services', 'Technology', 'Consumer Goods', 'Automotive' 'Pharmaceutical'
         ]
 
         india_challenging_sectors = [
@@ -436,19 +436,18 @@ def validate_unusual_metrics(symbol, data):
 
 
 def calculate_intrinsic_value(data):
-    eps = data.get('eps', None)
-    fcf = data.get('fcf', None)
-    share_count = data.get('sharesOutstanding', None)
+    eps = data.get('eps', 0) or data.get('trailingEPS', 0) or 0
+    pe_ratio = data.get('pe_ratio', 0) or 0
+    fcf = data.get('fcf', 0) or 0
+    market_cap = data.get('market_cap', 0) or 0
+    shares_outstanding = data.get('sharesOutstanding', 0) or 0
 
-    if eps is None or eps <= 0:
-        if 'trailingEPS' in data:
-            eps = data['trailingEPS']
+    if eps <= 0 or pe_ratio <= 0:
+        return 0
 
-    if eps is not None and eps > 0:
-        growth_rate = 0.10
-        if data.get('earningsGrowth') is not None and data['earningsGrowth'] > 0:
-            growth_rate = min(max(data['earningsGrowth'], 0.05), 0.20)
-
+    try:
+        growth_rate = data.get('earningsGrowth', 0.10) or 0.10
+        growth_rate = max(0.05, min(growth_rate, 0.20))
         discount_rate = 0.12
 
         future_eps = []
@@ -459,28 +458,18 @@ def calculate_intrinsic_value(data):
         future_eps.append(terminal_value)
 
         present_value = sum([eps_i / (1 + discount_rate) ** (i + 1) for i, eps_i in enumerate(future_eps)])
+
         return present_value
-
-    elif fcf is not None and fcf > 0 and share_count is not None and share_count > 0:
-        fcf_per_share = fcf / share_count
-
-        growth_rate = 0.10
-        if data.get('earningsGrowth') is not None and data['earningsGrowth'] > 0:
-            growth_rate = min(max(data['earningsGrowth'], 0.05), 0.20)
-
-        discount_rate = 0.12
-
-        future_fcf = []
-        for i in range(1, 11):
-            future_fcf.append(fcf_per_share * (1 + growth_rate) ** i)
-
-        terminal_value = future_fcf[-1] * (1 + 0.03) / (discount_rate - 0.03)
-        future_fcf.append(terminal_value)
-
-        present_value = sum([fcf_i / (1 + discount_rate) ** (i + 1) for i, fcf_i in enumerate(future_fcf)])
-        return present_value
-
-    return None
+    except:
+        if market_cap > 0 and shares_outstanding > 0:
+            avg_pe = 15
+            if pe_ratio > 0 and pe_ratio < 50:
+                avg_pe = pe_ratio
+            expected_eps_growth = 0.10
+            future_value = eps * (1 + expected_eps_growth) * avg_pe
+            return future_value
+        else:
+            return 0
 
 
 def buffett_analysis(stock_data):
@@ -493,7 +482,8 @@ def buffett_analysis(stock_data):
     ]
 
     buffett_avoided_sectors = [
-        'Biotechnology', 'Cryptocurrency', 'Cannabis','Mining', 'Oil & Gas E&P', 'Airlines'
+        'Biotechnology', 'Cryptocurrency', 'Cannabis',
+        'Mining', 'Oil & Gas E&P', 'Airlines'
     ]
 
     for symbol, data in stock_data.items():
@@ -517,16 +507,19 @@ def buffett_analysis(stock_data):
         if data.get('debt_to_equity') and data['debt_to_equity'] > 3:
             data['debt_to_equity'] = data['debt_to_equity'] / 100
 
-        if data.get('intrinsic_value') is None or data['intrinsic_value'] <= 0:
-            intrinsic_value = calculate_intrinsic_value(data)
-            if intrinsic_value is not None and intrinsic_value > 0:
-                data['intrinsic_value'] = intrinsic_value
+        if 'intrinsic_value' not in data or data['intrinsic_value'] is None or data['intrinsic_value'] == 0:
+            data['intrinsic_value'] = calculate_intrinsic_value(data)
 
-                current_price = data.get('current_price', 0)
-                if current_price > 0 and intrinsic_value > current_price:
-                    data['margin_of_safety'] = (intrinsic_value - current_price) / intrinsic_value * 100
+            if data['intrinsic_value'] > 0 and data.get('current_price', 0) > 0:
+                current_price = data['current_price']
+                intrinsic_value = data['intrinsic_value']
+
+                if intrinsic_value > current_price:
+                    data['margin_of_safety'] = ((intrinsic_value - current_price) / intrinsic_value) * 100
                 else:
                     data['margin_of_safety'] = 0
+            else:
+                data['margin_of_safety'] = 0
 
         validation_score, validation_reason = validate_unusual_metrics(symbol, data)
         if validation_score < 0:
@@ -714,8 +707,6 @@ def buffett_analysis(stock_data):
             warnings.append(management_reason)
 
         raw_api_debt = data.get('debtToEquity', 'Not in API')
-        actual_debt_to_equity = data.get('debt_to_equity', 'N/A')
-        data_quality_issues.append(f"API debtToEquity: {raw_api_debt}, Used value: {actual_debt_to_equity}")
 
         if score >= 13:
             buffett_picks[symbol] = {
@@ -741,9 +732,35 @@ def buffett_analysis(stock_data):
     return sorted_picks
 
 
+def increment_visit_counter():
+    counter_file = 'data/visit_counter.json'
+    today = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d')
+
+    try:
+        if os.path.exists(counter_file):
+            with open(counter_file, 'r') as f:
+                counter_data = json.load(f)
+        else:
+            counter_data = {}
+
+        if today in counter_data:
+            counter_data[today] += 1
+        else:
+            counter_data[today] = 1
+
+        with open(counter_file, 'w') as f:
+            json.dump(counter_data, f, indent=2)
+
+        return counter_data.get(today, 0)
+    except:
+        return 1
+
+
 def generate_html_report(buffett_picks):
-    ist = pytz.timezone('Asia/Kolkata')
-    current_time = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %Z")
+    india_timezone = pytz.timezone('Asia/Kolkata')
+    current_time = datetime.now(india_timezone)
+    formatted_time = current_time.strftime("%d-%b-%Y %I:%M %p IST")
+    visit_count = increment_visit_counter()
 
     html = """
     <!DOCTYPE html>
@@ -751,7 +768,7 @@ def generate_html_report(buffett_picks):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Warren Buffett Indian Stock Picks-Disclaimer This is Not investment advice make your own analysis and research</title>
+        <title>Warren Buffett Indian Stock Picks</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
         <style>
@@ -843,13 +860,21 @@ def generate_html_report(buffett_picks):
                 overflow: hidden;
                 transition: max-height 0.2s ease-out;
             }
-            #searchBox {
+            .search-container {
                 margin-bottom: 20px;
             }
-            .sticky-top-custom {
-                position: sticky;
-                top: 20px;
-                z-index: 1020;
+            #stockSearch {
+                padding: 10px 15px;
+                border-radius: 50px;
+                border: 1px solid #ced4da;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                width: 100%;
+            }
+            .visit-counter {
+                font-size: 0.8rem;
+                color: #6c757d;
+                text-align: center;
+                margin-top: 5px;
             }
             .hidden {
                 display: none !important;
@@ -859,28 +884,18 @@ def generate_html_report(buffett_picks):
     <body>
         <div class="container">
             <div class="row mt-4 mb-2">
-                <div class="col-12">
-                    <h1 class="display-4">Warren Buffett Indian Stock Picks</h1>
-                    <p class="text-muted">Last updated: """ + current_time + """</p>
+                <div class="col-md-8">
+                    <h1 class="display-4">Warren Buffett Indian Stock Picks-Disclaimer This is not investment advice do your own analysis and research </h1>
+                    <p class="text-muted">Last updated: """ + formatted_time + """</p>
+                    <p class="visit-counter">Today's visitor count: """ + str(visit_count) + """</p>
+                </div>
+                <div class="col-md-4">
+                    <div class="search-container">
+                        <input type="text" id="stockSearch" placeholder="Search for stocks by name or symbol..." 
+                               class="form-control" onkeyup="searchStocks()">
+                    </div>
                     <div class="buffett-quote">
                         "Price is what you pay. Value is what you get." - Warren Buffett
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="input-group sticky-top-custom">
-                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input type="text" id="searchBox" class="form-control" placeholder="Search by name, symbol, or sector...">
-                        <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">Clear</button>
-                    </div>
-                </div>
-                <div class="col-md-6 text-end">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-outline-primary" onclick="sortByScore()">Sort by Score</button>
-                        <button type="button" class="btn btn-outline-primary" onclick="sortByName()">Sort by Name</button>
-                        <button type="button" class="btn btn-outline-primary" onclick="sortBySafety()">Sort by Safety</button>
                     </div>
                 </div>
             </div>
@@ -913,7 +928,7 @@ def generate_html_report(buffett_picks):
                 <p class="small mb-0">Stocks are scored based on how well they align with these principles. Minimum score threshold: 12 points.</p>
             </div>
 
-            <div class="row" id="stocksContainer">
+            <div class="row" id="stockCardsContainer">
     """
 
     total_market_cap = sum(data.get('market_cap', 0) or 0 for data in buffett_picks.values())
@@ -949,7 +964,7 @@ def generate_html_report(buffett_picks):
         if score >= 15:
             score_class = "success"
             score_text = "Excellent"
-        elif score >= 12:
+        elif score >= 13:
             score_class = "primary"
             score_text = "Very Good"
         elif score >= 10:
@@ -967,7 +982,7 @@ def generate_html_report(buffett_picks):
         has_data_quality_issues = len(data_quality_issues) > 0
 
         html += f"""
-                <div class="col-md-6 col-lg-4 stock-card-container" data-name="{data['name']}" data-symbol="{display_symbol}" data-sector="{data['sector']}" data-score="{score}" data-safety="{margin_of_safety}">
+                <div class="col-md-6 col-lg-4 stock-card-wrapper" data-name="{data['name'].lower()}" data-symbol="{display_symbol.lower()}">
                     <div class="card stock-card">
                         <div class="card-header">
                             <h5 class="card-title mb-0">{data['name']}</h5>
@@ -1208,6 +1223,7 @@ def generate_html_report(buffett_picks):
             <div class="container text-center">
                 <p class="mb-0 text-muted">This analysis is for educational purposes only. Always do your own research before investing.</p>
                 <p class="mb-0 text-muted small">Updated daily after market close.</p>
+                <p class="visit-counter">Total visits today: """ + str(visit_count) + """</p>
             </div>
         </footer>
 
@@ -1219,9 +1235,6 @@ def generate_html_report(buffett_picks):
                     symbol.style.cursor = 'pointer';
                     symbol.title = 'Click to view on NSE website';
                 });
-
-                const searchBox = document.getElementById('searchBox');
-                searchBox.addEventListener('keyup', filterStocks);
             });
 
             function toggleSection(element) {
@@ -1233,59 +1246,27 @@ def generate_html_report(buffett_picks):
                 }
             }
 
-            function filterStocks() {
-                const searchInput = document.getElementById('searchBox').value.toLowerCase();
-                const stockCards = document.getElementsByClassName('stock-card-container');
+            function searchStocks() {
+                const searchInput = document.getElementById('stockSearch');
+                const filter = searchInput.value.toLowerCase();
+                const stockCards = document.getElementsByClassName('stock-card-wrapper');
 
-                Array.from(stockCards).forEach(card => {
-                    const name = card.getAttribute('data-name').toLowerCase();
-                    const symbol = card.getAttribute('data-symbol').toLowerCase();
-                    const sector = card.getAttribute('data-sector').toLowerCase();
+                for (let i = 0; i < stockCards.length; i++) {
+                    const name = stockCards[i].getAttribute('data-name');
+                    const symbol = stockCards[i].getAttribute('data-symbol');
 
-                    if (name.includes(searchInput) || symbol.includes(searchInput) || sector.includes(searchInput)) {
-                        card.classList.remove('hidden');
+                    if (name.includes(filter) || symbol.includes(filter)) {
+                        stockCards[i].classList.remove('hidden');
                     } else {
-                        card.classList.add('hidden');
+                        stockCards[i].classList.add('hidden');
                     }
-                });
-            }
+                }
 
-            function clearSearch() {
-                document.getElementById('searchBox').value = '';
-                filterStocks();
-            }
-
-            function sortByScore() {
-                sortCards('score', true);
-            }
-
-            function sortByName() {
-                sortCards('name', false);
-            }
-
-            function sortBySafety() {
-                sortCards('safety', true);
-            }
-
-            function sortCards(attribute, isNumeric) {
-                const container = document.getElementById('stocksContainer');
-                const cards = Array.from(container.getElementsByClassName('stock-card-container'));
-
-                cards.sort((a, b) => {
-                    let valueA = a.getAttribute('data-' + attribute);
-                    let valueB = b.getAttribute('data-' + attribute);
-
-                    if (isNumeric) {
-                        valueA = parseFloat(valueA);
-                        valueB = parseFloat(valueB);
-                        return valueB - valueA; // Descending for numeric
-                    } else {
-                        return valueA.localeCompare(valueB); // Ascending for text
-                    }
-                });
-
-                // Re-append in sorted order
-                cards.forEach(card => container.appendChild(card));
+                const visibleCount = document.querySelectorAll('.stock-card-wrapper:not(.hidden)').length;
+                const infoAlert = document.querySelector('.alert-info strong');
+                if (infoAlert) {
+                    infoAlert.textContent = `Found ${visibleCount} companies`;
+                }
             }
         </script>
     </body>
