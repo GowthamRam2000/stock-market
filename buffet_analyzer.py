@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime
+import pytz
 import re
 
 
@@ -34,7 +35,7 @@ def analyze_industry_dynamics(symbol, data):
 
     unfavorable_industries = [
         'Biotechnology', 'Cryptocurrency', 'Cannabis', 'Airlines', 'Mining',
-        'Oil & Gas E&P',  'Fashion', 'Retail'
+        'Oil & Gas E&P', 'Fashion', 'Retail'
     ]
 
     high_concentration_keywords = [
@@ -74,13 +75,13 @@ def analyze_regulatory_environment(symbol, data):
     ]
 
     challenging_regulatory_sectors = [
-        'Healthcare', 'Telecom', 'Energy', 'Banking',
+         'Healthcare', 'Telecom', 'Energy', 'Banking',
         'Technology', 'Oil & Gas'
     ]
 
     if '.NS' in symbol:
         india_favorable_sectors = [
-            'IT Services', 'Technology', 'Consumer Goods', 'Automotive', 'Pharmaceutical'
+            'IT Services', 'Technology', 'Consumer Goods', 'Automotive','Pharmaceutical'
         ]
 
         india_challenging_sectors = [
@@ -434,32 +435,52 @@ def validate_unusual_metrics(symbol, data):
         return 0, ""
 
 
-def standardize_metrics(data):
-    if 'roe' in data and data['roe'] is not None:
-        if data['roe'] < 0.01:  
-            data['roe'] = data['roe'] * 100
-        elif data['roe'] > 100:  
-            data['roe'] = data['roe'] / 100
+def calculate_intrinsic_value(data):
+    eps = data.get('eps', None)
+    fcf = data.get('fcf', None)
+    share_count = data.get('sharesOutstanding', None)
 
-    if 'debt_to_equity' in data and data['debt_to_equity'] is not None:
-        if data['debt_to_equity'] > 5:  
-            data['debt_to_equity'] = data['debt_to_equity'] / 100
+    if eps is None or eps <= 0:
+        if 'trailingEPS' in data:
+            eps = data['trailingEPS']
 
-    if 'debtToEquity' in data and data['debtToEquity'] is not None:
-        api_debt = data['debtToEquity']
-        if api_debt > 5:  
-            api_debt = api_debt / 100
+    if eps is not None and eps > 0:
+        growth_rate = 0.10
+        if data.get('earningsGrowth') is not None and data['earningsGrowth'] > 0:
+            growth_rate = min(max(data['earningsGrowth'], 0.05), 0.20)
 
-        if 'debt_to_equity' in data and abs(data['debt_to_equity'] - api_debt) > 0.1:
-            data['debt_to_equity'] = api_debt
+        discount_rate = 0.12
 
-    if 'profit_margin' in data and data['profit_margin'] is not None:
-        if data['profit_margin'] < 0.01:  
-            data['profit_margin'] = data['profit_margin'] * 100
-        elif data['profit_margin'] > 100:  
-            data['profit_margin'] = data['profit_margin'] / 100
+        future_eps = []
+        for i in range(1, 11):
+            future_eps.append(eps * (1 + growth_rate) ** i)
 
-    return data
+        terminal_value = future_eps[-1] * (1 + 0.03) / (discount_rate - 0.03)
+        future_eps.append(terminal_value)
+
+        present_value = sum([eps_i / (1 + discount_rate) ** (i + 1) for i, eps_i in enumerate(future_eps)])
+        return present_value
+
+    elif fcf is not None and fcf > 0 and share_count is not None and share_count > 0:
+        fcf_per_share = fcf / share_count
+
+        growth_rate = 0.10
+        if data.get('earningsGrowth') is not None and data['earningsGrowth'] > 0:
+            growth_rate = min(max(data['earningsGrowth'], 0.05), 0.20)
+
+        discount_rate = 0.12
+
+        future_fcf = []
+        for i in range(1, 11):
+            future_fcf.append(fcf_per_share * (1 + growth_rate) ** i)
+
+        terminal_value = future_fcf[-1] * (1 + 0.03) / (discount_rate - 0.03)
+        future_fcf.append(terminal_value)
+
+        present_value = sum([fcf_i / (1 + discount_rate) ** (i + 1) for i, fcf_i in enumerate(future_fcf)])
+        return present_value
+
+    return None
 
 
 def buffett_analysis(stock_data):
@@ -468,12 +489,11 @@ def buffett_analysis(stock_data):
     buffett_preferred_sectors = [
         'Financial Services', 'Consumer Defensive', 'Technology', 'Financial',
         'Consumer Goods', 'Healthcare', 'Consumer Staples', 'Insurance', 'Banking',
-        'Food & Beverage', 'Retail', 'Communication Services', 'Utilities','Pharmaceuticals'
+        'Food & Beverage', 'Retail', 'Communication Services', 'Utilities', 'Pharmaceuticals'
     ]
 
     buffett_avoided_sectors = [
-        'Biotechnology', 'Cryptocurrency', 'Cannabis',
-        'Mining', 'Oil & Gas E&P', 'Airlines'
+        'Biotechnology', 'Cryptocurrency', 'Cannabis','Mining', 'Oil & Gas E&P', 'Airlines'
     ]
 
     for symbol, data in stock_data.items():
@@ -490,13 +510,23 @@ def buffett_analysis(stock_data):
         qualitative_factors = {}
         data_quality_issues = []
 
-        for key_metric in ['roe', 'debt_to_equity', 'pe_ratio', 'market_cap', 'current_price', 'intrinsic_value']:
+        for key_metric in ['roe', 'debt_to_equity', 'pe_ratio', 'market_cap', 'current_price']:
             if key_metric not in data or data[key_metric] is None:
                 missing_data.append(key_metric)
 
-        data = standardize_metrics(data)
+        if data.get('debt_to_equity') and data['debt_to_equity'] > 3:
+            data['debt_to_equity'] = data['debt_to_equity'] / 100
 
-        raw_api_debt = data.get('debtToEquity', 'Not in API')
+        if data.get('intrinsic_value') is None or data['intrinsic_value'] <= 0:
+            intrinsic_value = calculate_intrinsic_value(data)
+            if intrinsic_value is not None and intrinsic_value > 0:
+                data['intrinsic_value'] = intrinsic_value
+
+                current_price = data.get('current_price', 0)
+                if current_price > 0 and intrinsic_value > current_price:
+                    data['margin_of_safety'] = (intrinsic_value - current_price) / intrinsic_value * 100
+                else:
+                    data['margin_of_safety'] = 0
 
         validation_score, validation_reason = validate_unusual_metrics(symbol, data)
         if validation_score < 0:
@@ -509,10 +539,10 @@ def buffett_analysis(stock_data):
             warnings.append(decline_reason)
 
         sector = data.get('sector', 'Unknown')
-        if any(preferred in sector for ind in buffett_preferred_sectors for preferred in [ind]):
+        if any(preferred in sector for preferred in buffett_preferred_sectors):
             score += 1
             reasons.append(f"Within Buffett's circle of competence: {sector}")
-        elif any(avoided in sector for ind in buffett_avoided_sectors for avoided in [ind]):
+        elif any(avoided in sector for avoided in buffett_avoided_sectors):
             warnings.append(f"Outside Buffett's typical interests: {sector}")
 
         if data.get('roe'):
@@ -683,9 +713,11 @@ def buffett_analysis(stock_data):
         elif management_score < 0:
             warnings.append(management_reason)
 
-        data_quality_issues.append(f"API debtToEquity: {raw_api_debt}, Used value: {data.get('debt_to_equity', 'N/A')}")
+        raw_api_debt = data.get('debtToEquity', 'Not in API')
+        actual_debt_to_equity = data.get('debt_to_equity', 'N/A')
+        data_quality_issues.append(f"API debtToEquity: {raw_api_debt}, Used value: {actual_debt_to_equity}")
 
-        if score >= 12:
+        if score >= 13:
             buffett_picks[symbol] = {
                 'name': data['name'],
                 'sector': data.get('sector', 'Unknown'),
@@ -710,13 +742,16 @@ def buffett_analysis(stock_data):
 
 
 def generate_html_report(buffett_picks):
+    ist = pytz.timezone('Asia/Kolkata')
+    current_time = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %Z")
+
     html = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-       <meta charset="UTF-8">
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Warren Buffett Indian Stock Picks-Disclaimer not investment advice (DO YOUR OWN ANALYSIS)</title>
+        <title>Warren Buffett Indian Stock Picks-Disclaimer This is Not investment advice make your own analysis and research</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
         <style>
@@ -808,20 +843,48 @@ def generate_html_report(buffett_picks):
                 overflow: hidden;
                 transition: max-height 0.2s ease-out;
             }
+            #searchBox {
+                margin-bottom: 20px;
+            }
+            .sticky-top-custom {
+                position: sticky;
+                top: 20px;
+                z-index: 1020;
+            }
+            .hidden {
+                display: none !important;
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="row mt-4 mb-2">
                 <div class="col-12">
-                    <h1 class="display-4">Warren Buffett Indian Stock Picks- Disclaimer not investment advice do your own analysis</h1>
-                    <p class="text-muted">Last updated: """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """</p>
+                    <h1 class="display-4">Warren Buffett Indian Stock Picks</h1>
+                    <p class="text-muted">Last updated: """ + current_time + """</p>
                     <div class="buffett-quote">
                         "Price is what you pay. Value is what you get." - Warren Buffett
                     </div>
                 </div>
             </div>
-            
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="input-group sticky-top-custom">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" id="searchBox" class="form-control" placeholder="Search by name, symbol, or sector...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">Clear</button>
+                    </div>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-primary" onclick="sortByScore()">Sort by Score</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="sortByName()">Sort by Name</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="sortBySafety()">Sort by Safety</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="filters p-3 mb-4">
                 <h5>Buffett's Key Investment Principles:</h5>
                 <div class="row">
@@ -849,8 +912,8 @@ def generate_html_report(buffett_picks):
                 </div>
                 <p class="small mb-0">Stocks are scored based on how well they align with these principles. Minimum score threshold: 12 points.</p>
             </div>
-            
-            <div class="row">
+
+            <div class="row" id="stocksContainer">
     """
 
     total_market_cap = sum(data.get('market_cap', 0) or 0 for data in buffett_picks.values())
@@ -904,7 +967,7 @@ def generate_html_report(buffett_picks):
         has_data_quality_issues = len(data_quality_issues) > 0
 
         html += f"""
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 stock-card-container" data-name="{data['name']}" data-symbol="{display_symbol}" data-sector="{data['sector']}" data-score="{score}" data-safety="{margin_of_safety}">
                     <div class="card stock-card">
                         <div class="card-header">
                             <h5 class="card-title mb-0">{data['name']}</h5>
@@ -948,37 +1011,37 @@ def generate_html_report(buffett_picks):
                                 <div class="col-6">Current Price:</div>
                                 <div class="col-6 text-end fw-bold">₹{price:,.2f}</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">Intrinsic Value:</div>
                                 <div class="col-6 text-end fw-bold">₹{intrinsic_value:,.2f}</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">Margin of Safety:</div>
                                 <div class="col-6 text-end fw-bold">{margin_of_safety:.2f}%</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">P/E Ratio:</div>
                                 <div class="col-6 text-end fw-bold">{pe_ratio:.2f}</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">ROE:</div>
                                 <div class="col-6 text-end fw-bold">{roe:.2f}%</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">Debt-to-Equity:</div>
-                                <div class="col-6 text-end fw-bold">{debt_to_equity:.2f} <small class="text-muted">(API: {raw_api_debt})</small></div>
+                                <div class="col-6 text-end fw-bold">{debt_to_equity:.2f}</div>
                             </div>
-                            
+
                             <div class="row mb-1">
                                 <div class="col-6">Market Cap:</div>
                                 <div class="col-6 text-end fw-bold">₹{market_cap_billions:.2f}B</div>
                             </div>
-                            
+
                             <h6 class="mt-4 mb-2">Why Buffett Would Like It:</h6>
                             <ul class="reasons">
         """
@@ -988,14 +1051,15 @@ def generate_html_report(buffett_picks):
 
         html += """
                             </ul>
-                            
+
                             <div class="qualitative-section">
                                 <h6 class="mb-2">Qualitative Assessment:</h6>
         """
 
         if 'industry_dynamics' in qualitative_factors:
             industry = qualitative_factors['industry_dynamics']
-            score_class = "positive-score" if industry['score'] > 0 else "negative-score" if industry['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if industry['score'] > 0 else "negative-score" if industry[
+                                                                                                 'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Industry Dynamics:</strong>
@@ -1006,7 +1070,8 @@ def generate_html_report(buffett_picks):
 
         if 'regulatory_environment' in qualitative_factors:
             regulatory = qualitative_factors['regulatory_environment']
-            score_class = "positive-score" if regulatory['score'] > 0 else "negative-score" if regulatory['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if regulatory['score'] > 0 else "negative-score" if regulatory[
+                                                                                                   'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Regulatory Environment:</strong>
@@ -1017,7 +1082,8 @@ def generate_html_report(buffett_picks):
 
         if 'macroeconomic_factors' in qualitative_factors:
             macro = qualitative_factors['macroeconomic_factors']
-            score_class = "positive-score" if macro['score'] > 0 else "negative-score" if macro['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if macro['score'] > 0 else "negative-score" if macro[
+                                                                                              'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Macroeconomic Factors:</strong>
@@ -1028,7 +1094,8 @@ def generate_html_report(buffett_picks):
 
         if 'corporate_governance' in qualitative_factors:
             governance = qualitative_factors['corporate_governance']
-            score_class = "positive-score" if governance['score'] > 0 else "negative-score" if governance['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if governance['score'] > 0 else "negative-score" if governance[
+                                                                                                   'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Corporate Governance:</strong>
@@ -1039,7 +1106,8 @@ def generate_html_report(buffett_picks):
 
         if 'india_cultural_fit' in qualitative_factors:
             india_fit = qualitative_factors['india_cultural_fit']
-            score_class = "positive-score" if india_fit['score'] > 0 else "negative-score" if india_fit['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if india_fit['score'] > 0 else "negative-score" if india_fit[
+                                                                                                  'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>India Cultural Fit:</strong>
@@ -1050,7 +1118,8 @@ def generate_html_report(buffett_picks):
 
         if 'economic_moat' in qualitative_factors:
             moat = qualitative_factors['economic_moat']
-            score_class = "positive-score" if moat['score'] > 0 else "negative-score" if moat['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if moat['score'] > 0 else "negative-score" if moat[
+                                                                                             'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Economic Moat:</strong>
@@ -1061,7 +1130,8 @@ def generate_html_report(buffett_picks):
 
         if 'owner_oriented_management' in qualitative_factors:
             management = qualitative_factors['owner_oriented_management']
-            score_class = "positive-score" if management['score'] > 0 else "negative-score" if management['score'] < 0 else "neutral-score"
+            score_class = "positive-score" if management['score'] > 0 else "negative-score" if management[
+                                                                                                   'score'] < 0 else "neutral-score"
             html += f"""
                                 <div class="qualitative-item">
                                     <strong>Owner-Oriented Management:</strong>
@@ -1092,14 +1162,14 @@ def generate_html_report(buffett_picks):
 
     html += """
             </div>
-            
+
             <div class="row mt-5 mb-4">
                 <div class="col-12">
                     <div class="card">
                         <div class="card-body">
                             <h4>Warren Buffett's Investment Philosophy</h4>
                             <p>Warren Buffett, often called the "Oracle of Omaha," follows a disciplined value investing approach based on principles he learned from his mentor, Benjamin Graham. Buffett looks for companies with:</p>
-                            
+
                             <div class="row">
                                 <div class="col-md-6">
                                     <h5>Quantitative Factors</h5>
@@ -1110,7 +1180,7 @@ def generate_html_report(buffett_picks):
                                         <li><strong>Margin of Safety</strong>: Buying at a price significantly below intrinsic value to reduce risk.</li>
                                     </ul>
                                 </div>
-                                
+
                                 <div class="col-md-6">
                                     <h5>Qualitative Factors</h5>
                                     <ul>
@@ -1124,7 +1194,7 @@ def generate_html_report(buffett_picks):
                                     </ul>
                                 </div>
                             </div>
-                            
+
                             <p>Remember Buffett's famous quotes:</p>
                             <div class="buffett-quote">"Be fearful when others are greedy, and greedy when others are fearful."</div>
                             <div class="buffett-quote">"It's far better to buy a wonderful company at a fair price than a fair company at a wonderful price."</div>
@@ -1133,14 +1203,14 @@ def generate_html_report(buffett_picks):
                 </div>
             </div>
         </div>
-        
+
         <footer class="bg-light py-3 mt-5">
             <div class="container text-center">
                 <p class="mb-0 text-muted">This analysis is for educational purposes only. Always do your own research before investing.</p>
                 <p class="mb-0 text-muted small">Updated daily after market close.</p>
             </div>
         </footer>
-        
+
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
@@ -1149,8 +1219,11 @@ def generate_html_report(buffett_picks):
                     symbol.style.cursor = 'pointer';
                     symbol.title = 'Click to view on NSE website';
                 });
+
+                const searchBox = document.getElementById('searchBox');
+                searchBox.addEventListener('keyup', filterStocks);
             });
-            
+
             function toggleSection(element) {
                 const content = element.querySelector('.collapsible-content');
                 if (content.style.maxHeight) {
@@ -1158,6 +1231,61 @@ def generate_html_report(buffett_picks):
                 } else {
                     content.style.maxHeight = content.scrollHeight + "px";
                 }
+            }
+
+            function filterStocks() {
+                const searchInput = document.getElementById('searchBox').value.toLowerCase();
+                const stockCards = document.getElementsByClassName('stock-card-container');
+
+                Array.from(stockCards).forEach(card => {
+                    const name = card.getAttribute('data-name').toLowerCase();
+                    const symbol = card.getAttribute('data-symbol').toLowerCase();
+                    const sector = card.getAttribute('data-sector').toLowerCase();
+
+                    if (name.includes(searchInput) || symbol.includes(searchInput) || sector.includes(searchInput)) {
+                        card.classList.remove('hidden');
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+            }
+
+            function clearSearch() {
+                document.getElementById('searchBox').value = '';
+                filterStocks();
+            }
+
+            function sortByScore() {
+                sortCards('score', true);
+            }
+
+            function sortByName() {
+                sortCards('name', false);
+            }
+
+            function sortBySafety() {
+                sortCards('safety', true);
+            }
+
+            function sortCards(attribute, isNumeric) {
+                const container = document.getElementById('stocksContainer');
+                const cards = Array.from(container.getElementsByClassName('stock-card-container'));
+
+                cards.sort((a, b) => {
+                    let valueA = a.getAttribute('data-' + attribute);
+                    let valueB = b.getAttribute('data-' + attribute);
+
+                    if (isNumeric) {
+                        valueA = parseFloat(valueA);
+                        valueB = parseFloat(valueB);
+                        return valueB - valueA; // Descending for numeric
+                    } else {
+                        return valueA.localeCompare(valueB); // Ascending for text
+                    }
+                });
+
+                // Re-append in sorted order
+                cards.forEach(card => container.appendChild(card));
             }
         </script>
     </body>
@@ -1171,8 +1299,9 @@ def generate_html_report(buffett_picks):
 
     print("HTML report generated at output/index.html")
 
+
 if __name__ == "__main__":
-    print("Starting Warren Buffett analysis")
+    print("Starting Warren Buffett analysis...")
     stock_data = load_latest_data()
     buffett_picks = buffett_analysis(stock_data)
     generate_html_report(buffett_picks)
