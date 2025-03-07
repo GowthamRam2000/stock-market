@@ -23,32 +23,16 @@ def load_latest_data():
         print(f"Error loading data: {e}")
         return {}
 
-
-# ----- ENHANCED FUNDAMENTAL ANALYSIS -----
-
 def analyze_operating_efficiency(symbol, data):
     """Analyze operating efficiency and profitability metrics"""
     score = 0
     reasons = []
     warnings = []
 
-    # Check for profit margin
+    # Check for profit margin - if not available, use ROE as a proxy
     profit_margin = data.get('profit_margin')
-    if profit_margin is not None:
-        if profit_margin > 20:
-            score += 3
-            reasons.append(f"Exceptional profit margin of {profit_margin:.2f}%")
-        elif profit_margin > 15:
-            score += 2
-            reasons.append(f"Strong profit margin of {profit_margin:.2f}%")
-        elif profit_margin > 10:
-            score += 1
-            reasons.append(f"Good profit margin of {profit_margin:.2f}%")
-    else:
-        warnings.append("Profit margin data not available")
-
-    # Check for ROE
     roe = data.get('roe')
+
     if roe is not None:
         if roe > 20:
             score += 3
@@ -62,68 +46,7 @@ def analyze_operating_efficiency(symbol, data):
     else:
         warnings.append("ROE data not available")
 
-    # Check for ROA if available
-    roa = data.get('returnOnAssets')
-    if roa is not None:
-        roa = roa * 100  # Convert to percentage
-        if roa > 10:
-            score += 2
-            reasons.append(f"Exceptional ROA of {roa:.2f}%")
-        elif roa > 5:
-            score += 1
-            reasons.append(f"Strong ROA of {roa:.2f}%")
 
-    return score, reasons, warnings
-
-
-def analyze_financial_health(symbol, data):
-    """Analyze balance sheet strength and financial health"""
-    score = 0
-    reasons = []
-    warnings = []
-
-    # Check for debt-to-equity
-    debt_to_equity = data.get('debt_to_equity')
-    if debt_to_equity is not None:
-        if debt_to_equity < 0.3:
-            score += 3
-            reasons.append(f"Minimal debt-to-equity ratio of {debt_to_equity:.2f}")
-        elif debt_to_equity < 0.5:
-            score += 2
-            reasons.append(f"Low debt-to-equity ratio of {debt_to_equity:.2f}")
-        elif debt_to_equity < 0.7:
-            score += 1
-            reasons.append(f"Moderate debt-to-equity ratio of {debt_to_equity:.2f}")
-        elif debt_to_equity > 1.5:
-            score -= 1
-            warnings.append(f"High debt-to-equity ratio of {debt_to_equity:.2f}")
-    else:
-        warnings.append("Debt-to-equity data not available")
-
-    # Check for interest coverage ratio if available
-    interest_coverage = data.get('interestCoverageRatio')
-    if interest_coverage is not None:
-        if interest_coverage > 10:
-            score += 2
-            reasons.append(f"Excellent interest coverage ratio of {interest_coverage:.2f}")
-        elif interest_coverage > 5:
-            score += 1
-            reasons.append(f"Strong interest coverage ratio of {interest_coverage:.2f}")
-        elif interest_coverage < 2:
-            score -= 1
-            warnings.append(f"Low interest coverage ratio of {interest_coverage:.2f}")
-
-    # Check for current ratio if available
-    current_ratio = data.get('currentRatio')
-    if current_ratio is not None:
-        if current_ratio > 2:
-            score += 1
-            reasons.append(f"Strong current ratio of {current_ratio:.2f}")
-        elif current_ratio < 1:
-            score -= 1
-            warnings.append(f"Weak current ratio of {current_ratio:.2f}")
-
-    # Free Cash Flow analysis
     fcf = data.get('fcf')
     if fcf is not None:
         if fcf > 0:
@@ -142,8 +65,56 @@ def analyze_financial_health(symbol, data):
             else:
                 score += 1
                 reasons.append("Positive free cash flow")
+        elif fcf < 0:
+            score -= 1
+            warnings.append(f"Negative free cash flow of {fcf:.2f}")
     else:
         warnings.append("Free cash flow data not available")
+
+    return score, reasons, warnings
+
+
+def analyze_financial_health(symbol, data):
+    """Analyze balance sheet strength and financial health"""
+    score = 0
+    reasons = []
+    warnings = []
+
+
+    debt_to_equity = data.get('debt_to_equity')
+    if debt_to_equity is not None:
+        if debt_to_equity < 0.3:
+            score += 3
+            reasons.append(f"Minimal debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.5:
+            score += 2
+            reasons.append(f"Low debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.7:
+            score += 1
+            reasons.append(f"Moderate debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity > 1.5:
+            score -= 1
+            warnings.append(f"High debt-to-equity ratio of {debt_to_equity:.2f}")
+    else:
+        warnings.append("Debt-to-equity data not available")
+
+
+    pb_ratio = data.get('pb_ratio')
+    if pb_ratio is not None:
+        if pb_ratio < 1.0:
+            score += 3
+            reasons.append(f"Trading below book value (P/B ratio: {pb_ratio:.2f})")
+        elif pb_ratio < 2.0:
+            score += 2
+            reasons.append(f"Reasonable P/B ratio of {pb_ratio:.2f}")
+        elif pb_ratio < 3.0:
+            score += 1
+            reasons.append(f"Acceptable P/B ratio of {pb_ratio:.2f}")
+        elif pb_ratio > 5.0:
+            score -= 1
+            warnings.append(f"High P/B ratio of {pb_ratio:.2f}")
+    else:
+        warnings.append("P/B ratio not available")
 
     return score, reasons, warnings
 
@@ -166,10 +137,6 @@ def analyze_industry_dynamics(symbol, data):
         'Oil & Gas E&P', 'Fashion', 'Retail'
     ]
 
-    high_concentration_keywords = [
-        'monopoly', 'duopoly', 'market leader', 'dominant', 'leading'
-    ]
-
     if any(ind in sector for ind in favorable_industries):
         score = 2
         reason = f"Industry with stable cash flows and high entry barriers: {sector}"
@@ -183,14 +150,6 @@ def analyze_industry_dynamics(symbol, data):
         score = 0
         reason = f"Neutral industry assessment: {sector}"
 
-    company_name = data.get('name', '')
-    company_desc = data.get('longBusinessSummary', '')
-
-    if company_desc and any(
-            keyword in (company_name + company_desc).lower() for keyword in high_concentration_keywords):
-        score += 1
-        reason += ". Appears to have strong market position"
-
     return score, reason
 
 
@@ -198,8 +157,8 @@ def analyze_regulatory_environment(symbol, data):
     sector = data.get('sector', 'Unknown')
 
     stable_regulatory_sectors = [
-        'Consumer Staples', 'Consumer Goods', 'Insurance', 'Banking', 'Pharmaceutical'
-                                                                      'Financial Services', 'Utilities'
+        'Consumer Staples', 'Consumer Goods', 'Insurance', 'Banking', 'Pharmaceutical',
+        'Financial Services', 'Utilities'
     ]
 
     challenging_regulatory_sectors = [
@@ -279,11 +238,8 @@ def analyze_macroeconomic_factors(symbol, data):
 def analyze_economic_moat(symbol, data):
     name = data.get('name', '')
     sector = data.get('sector', 'Unknown')
-    profit_margin = data.get('profit_margin', 0) or 0
     roe = data.get('roe', 0) or 0
-    company_desc = data.get('longBusinessSummary', '').lower() if data.get('longBusinessSummary') else ''
 
-    high_margin = profit_margin > 20
     exceptional_roe = roe > 25
 
     network_effect_sectors = [
@@ -307,13 +263,6 @@ def analyze_economic_moat(symbol, data):
         'Page Industries', 'Pidilite Industries'
     ]
 
-    moat_keywords = {
-        'brand': ['brand', 'premium', 'loyalty', 'trusted', 'heritage'],
-        'network': ['network effect', 'platform', 'marketplace', 'ecosystem'],
-        'switching': ['switching cost', 'customer lock-in', 'retention', 'stickiness'],
-        'cost': ['low cost', 'scale advantage', 'efficient', 'market share']
-    }
-
     score = 0
     moat_types = []
 
@@ -335,18 +284,9 @@ def analyze_economic_moat(symbol, data):
         score += 1
         moat_types.append(f"Sector with potential switching costs ({sector})")
 
-    if high_margin:
-        score += 1
-        moat_types.append(f"High profit margin ({profit_margin:.1f}%) suggests pricing power")
-
     if exceptional_roe:
         score += 1
         moat_types.append(f"Exceptional ROE ({roe:.1f}%) indicates sustainable competitive advantage")
-
-    for moat_type, keywords in moat_keywords.items():
-        if any(keyword in company_desc for keyword in keywords):
-            score += 0.5
-            moat_types.append(f"Potential {moat_type} advantage indicated")
 
     score = min(score, 4)
 
@@ -380,7 +320,7 @@ def analyze_valuation(symbol, data):
     else:
         warnings.append("P/E ratio data not available")
 
-    # P/B Ratio analysis
+
     pb_ratio = data.get('pb_ratio')
     if pb_ratio is not None and pb_ratio > 0:
         sector = data.get('sector', 'Unknown')
@@ -397,35 +337,7 @@ def analyze_valuation(symbol, data):
             score -= 1
             warnings.append(f"High P/B ratio of {pb_ratio:.2f}")
 
-    # Intrinsic value and margin of safety
-    intrinsic_value = data.get('intrinsic_value')
-    current_price = data.get('current_price')
-    margin_of_safety = data.get('margin_of_safety')
 
-    if intrinsic_value is not None and current_price is not None and intrinsic_value > 0:
-        if margin_of_safety is None:
-            margin_of_safety = ((
-                                            intrinsic_value - current_price) / intrinsic_value) * 100 if current_price < intrinsic_value else 0
-
-        if margin_of_safety > 40:
-            score += 4
-            reasons.append(f"Huge margin of safety: {margin_of_safety:.2f}%")
-        elif margin_of_safety > 30:
-            score += 3
-            reasons.append(f"Substantial margin of safety: {margin_of_safety:.2f}%")
-        elif margin_of_safety > 20:
-            score += 2
-            reasons.append(f"Good margin of safety: {margin_of_safety:.2f}%")
-        elif margin_of_safety > 10:
-            score += 1
-            reasons.append(f"Some margin of safety: {margin_of_safety:.2f}%")
-        elif margin_of_safety < 0:
-            score -= 1
-            warnings.append(f"No margin of safety, stock may be overvalued by {-margin_of_safety:.2f}%")
-    else:
-        warnings.append("Intrinsic value calculation not available")
-
-    # Dividend yield if available
     dividend_yield = data.get('dividendYield')
     if dividend_yield is not None and dividend_yield > 0:
         if dividend_yield > 4:
@@ -438,7 +350,6 @@ def analyze_valuation(symbol, data):
     return score, reasons, warnings
 
 
-# ----- TECHNICAL INDICATORS ANALYSIS -----
 
 def analyze_technical_indicators(symbol, data):
     """Analyze technical indicators when available"""
@@ -446,13 +357,13 @@ def analyze_technical_indicators(symbol, data):
     reasons = []
     warnings = []
 
-    # Check if technical data is available
+
     price_history_available = data.get('price_history_available', False)
     if not price_history_available:
         warnings.append("Technical analysis skipped - price history not available")
         return score, reasons, warnings
 
-    # RSI Analysis
+
     rsi = data.get('rsi')
     if rsi is not None:
         if rsi < 30:
@@ -467,58 +378,37 @@ def analyze_technical_indicators(symbol, data):
     else:
         warnings.append("RSI data not available")
 
-    # Moving Average Analysis
+
     ma_50 = data.get('ma_50')
-    ma_200 = data.get('ma_200')
     current_price = data.get('current_price')
 
-    if ma_50 is not None and ma_200 is not None:
-        # Golden Cross / Death Cross
-        if ma_50 > ma_200:
+    if ma_50 is not None and current_price is not None:
+        if current_price > ma_50:
             score += 1
-            reasons.append(f"Golden Cross pattern (50-day MA above 200-day MA) indicates bullish trend")
-        elif ma_50 < ma_200:
+            reasons.append(f"Price above 50-day moving average, suggesting bullish trend")
+        elif current_price < ma_50:
             score -= 1
-            reasons.append(f"Death Cross pattern (50-day MA below 200-day MA) indicates bearish trend")
-
-        # Current price relative to MAs
-        if current_price is not None:
-            if current_price > ma_50 and current_price > ma_200:
-                score += 1
-                reasons.append(f"Price above both 50-day and 200-day moving averages, suggesting bullish trend")
-            elif current_price < ma_50 and current_price < ma_200:
-                score -= 1
-                reasons.append(f"Price below both 50-day and 200-day moving averages, suggesting bearish trend")
-    elif ma_50 is not None:
-        if current_price is not None:
-            if current_price > ma_50:
-                score += 0.5
-                reasons.append(f"Price above 50-day moving average, suggesting near-term bullish trend")
-            else:
-                score -= 0.5
-                reasons.append(f"Price below 50-day moving average, suggesting near-term bearish trend")
+            reasons.append(f"Price below 50-day moving average, suggesting bearish trend")
     else:
-        warnings.append("Moving average data not available")
+        warnings.append("50-day moving average data not available")
 
-    # MACD Analysis
-    macd_line = data.get('macd_line')
-    macd_signal = data.get('macd_signal')
-    macd_histogram = data.get('macd_histogram')
 
-    if macd_line is not None and macd_signal is not None:
-        if macd_line > macd_signal and macd_histogram > 0:
-            score += 2
-            reasons.append(f"Bullish MACD crossover (MACD Line above Signal Line)")
-        elif macd_line < macd_signal and macd_histogram < 0:
+    historical_prices = data.get('historical_prices', [])
+    if len(historical_prices) >= 30:
+
+        recent_avg = sum(historical_prices[-5:]) / 5
+        older_avg = sum(historical_prices[-30:-25]) / 5
+
+        if recent_avg > older_avg * 1.1:
+            score += 1
+            reasons.append(f"Strong price momentum over the past month (+{((recent_avg / older_avg) - 1) * 100:.1f}%)")
+        elif recent_avg < older_avg * 0.9:
             score -= 1
-            reasons.append(f"Bearish MACD crossover (MACD Line below Signal Line)")
-    else:
-        warnings.append("MACD data not available")
+            reasons.append(f"Declining price trend over the past month ({((recent_avg / older_avg) - 1) * 100:.1f}%)")
 
     return score, reasons, warnings
 
 
-# ----- SECTOR PERFORMANCE ANALYSIS -----
 
 def analyze_sector_performance(symbol, data, all_stocks_data):
     """Compare stock against sector averages using consistently available metrics"""
@@ -531,14 +421,15 @@ def analyze_sector_performance(symbol, data, all_stocks_data):
         warnings.append("Unable to perform sector analysis: sector information missing")
         return score, reasons, warnings
 
-    # Only use consistently available metrics
+
     reliable_metrics = {
         'roe': {'higher_better': True, 'name': 'Return on Equity'},
         'debt_to_equity': {'higher_better': False, 'name': 'Debt-to-Equity Ratio'},
-        'pe_ratio': {'higher_better': False, 'name': 'P/E Ratio'}
+        'pe_ratio': {'higher_better': False, 'name': 'P/E Ratio'},
+        'pb_ratio': {'higher_better': False, 'name': 'P/B Ratio'}
     }
 
-    # Collect sector peers
+
     sector_stocks = {}
     for sym, stock_data in all_stocks_data.items():
         if 'error' in stock_data:
@@ -550,48 +441,48 @@ def analyze_sector_performance(symbol, data, all_stocks_data):
         warnings.append(f"Not enough peers in {sector} sector for comparison")
         return score, reasons, warnings
 
-    # Compare across available metrics
+
     outperformance_count = 0
     total_metrics_compared = 0
 
     for metric, props in reliable_metrics.items():
-        # Only include the metric if it's available for this stock
+
         if metric not in data or data[metric] is None:
             continue
 
-        # Get peer values for this metric
+
         peer_values = [s[metric] for s in sector_stocks.values()
                        if metric in s and s[metric] is not None]
 
         if len(peer_values) < 2:
             continue
 
-        # Calculate sector average
+
         sector_avg = sum(peer_values) / len(peer_values)
         data[f'sector_avg_{metric}'] = sector_avg
 
-        # Compare performance
+
         total_metrics_compared += 1
         performance_ratio = data[metric] / sector_avg if sector_avg != 0 else 1
 
-        # For metrics where higher is better
+
         if props['higher_better'] and performance_ratio > 1.2:
             score += 1
             outperformance_count += 1
             reasons.append(
                 f"Superior {props['name']} ({data[metric]:.2f}) compared to sector average ({sector_avg:.2f})")
 
-        # For metrics where lower is better
+
         elif not props['higher_better'] and performance_ratio < 0.8:
             score += 1
             outperformance_count += 1
             reasons.append(
                 f"Superior {props['name']} ({data[metric]:.2f}) compared to sector average ({sector_avg:.2f})")
 
-    # If we compared at least 2 metrics
+
     if total_metrics_compared >= 2:
         if outperformance_count == total_metrics_compared:
-            score += 1  # Bonus for outperforming in all metrics
+            score += 1
             reasons.append(f"Outperforms sector in all {total_metrics_compared} key metrics")
     else:
         warnings.append(f"Limited sector comparison: only {total_metrics_compared} metrics available")
@@ -599,81 +490,15 @@ def analyze_sector_performance(symbol, data, all_stocks_data):
     return score, reasons, warnings
 
 
-# ----- OWNERSHIP ANALYSIS -----
 
-def analyze_ownership_patterns(symbol, data):
-    """Analyze ownership patterns if data is available"""
+
+def analyze_dividend_policy(symbol, data):
+    """Analyze dividends and payout ratio"""
     score = 0
     reasons = []
     warnings = []
 
-    # Check if shareholding data is available
-    shareholding_data_available = data.get('shareholding_data_available', False)
-    if not shareholding_data_available:
-        warnings.append("Ownership analysis skipped - shareholding data not available")
-        return score, reasons, warnings
 
-    # Promoter holdings analysis
-    promoter_holding = data.get('promoterHolding')
-    if promoter_holding is not None:
-        if promoter_holding > 50:
-            score += 2
-            reasons.append(f"Strong promoter commitment with {promoter_holding:.2f}% holding")
-        elif promoter_holding > 30:
-            score += 1
-            reasons.append(f"Significant promoter holding of {promoter_holding:.2f}%")
-
-    # Changes in holdings
-    promoter_change = data.get('promoterHoldingChange')
-    if promoter_change is not None:
-        if promoter_change > 2:
-            score += 2
-            reasons.append(f"Recent promoter buying (+{promoter_change:.2f}%)")
-        elif promoter_change > 0.5:
-            score += 1
-            reasons.append(f"Modest increase in promoter holding (+{promoter_change:.2f}%)")
-        elif promoter_change < -2:
-            score -= 2
-            warnings.append(f"Significant promoter selling ({promoter_change:.2f}%)")
-        elif promoter_change < -0.5:
-            score -= 1
-            warnings.append(f"Recent promoter selling ({promoter_change:.2f}%)")
-
-    # Institutional holdings
-    fii_holding = data.get('fiiHolding')
-    dii_holding = data.get('diiHolding')
-
-    if fii_holding is not None and dii_holding is not None:
-        total_institutional = fii_holding + dii_holding
-        if total_institutional > 45:
-            score += 1
-            reasons.append(f"Strong institutional interest ({total_institutional:.2f}% total holding)")
-
-    # Changes in institutional holdings
-    fii_change = data.get('fiiHoldingChange')
-    dii_change = data.get('diiHoldingChange')
-
-    if fii_change is not None and dii_change is not None:
-        combined_change = fii_change + dii_change
-        if combined_change > 3:
-            score += 1
-            reasons.append(f"Strong institutional buying (+{combined_change:.2f}%)")
-        elif combined_change < -3:
-            score -= 1
-            warnings.append(f"Significant institutional selling ({combined_change:.2f}%)")
-
-    return score, reasons, warnings
-
-
-# ----- DIVIDEND AND CORPORATE ACTIONS ANALYSIS -----
-
-def analyze_corporate_actions(symbol, data):
-    """Analyze dividends and other corporate actions if available"""
-    score = 0
-    reasons = []
-    warnings = []
-
-    # Check dividend yield
     dividend_yield = data.get('dividendYield')
     if dividend_yield is not None and dividend_yield > 0:
         sector = data.get('sector', 'Unknown')
@@ -686,8 +511,10 @@ def analyze_corporate_actions(symbol, data):
         elif dividend_yield > threshold:
             score += 1
             reasons.append(f"Good dividend yield of {dividend_yield:.2f}%")
+    else:
+        warnings.append("No dividend yield data available")
 
-    # Check payout ratio
+
     payout_ratio = data.get('payoutRatio')
     if payout_ratio is not None:
         if 30 <= payout_ratio <= 60:
@@ -697,21 +524,10 @@ def analyze_corporate_actions(symbol, data):
             score -= 1
             warnings.append(f"High payout ratio of {payout_ratio:.2f}% may be unsustainable")
 
-    # Check for buybacks
-    has_recent_buyback = data.get('hasRecentBuyback', False)
-    if has_recent_buyback:
-        score += 2
-        reasons.append("Recent share buyback indicates shareholder-friendly management")
-
-    # Check corporate actions data availability
-    corporate_actions_available = data.get('corporate_actions_available', False)
-    if not corporate_actions_available and dividend_yield is None:
-        warnings.append("Corporate actions analysis limited - data not available")
-
     return score, reasons, warnings
 
 
-# ----- INTRINSIC VALUE CALCULATION -----
+
 
 def calculate_intrinsic_value_alternative(data):
     """Calculate intrinsic value using alternative methods based on available data"""
@@ -719,7 +535,7 @@ def calculate_intrinsic_value_alternative(data):
 
     # Method 1: Graham's formula
     try:
-        eps = data.get('eps') or data.get('trailingEPS')
+        eps = data.get('eps')
         if eps and eps > 0:
             # Basic growth estimate based on industry
             sector = data.get('sector', '')
@@ -742,7 +558,7 @@ def calculate_intrinsic_value_alternative(data):
     except:
         pass
 
-    # Method 2: Dividend Discount Model
+
     try:
         dividend_yield = data.get('dividendYield')
         current_price = data.get('current_price')
@@ -750,16 +566,16 @@ def calculate_intrinsic_value_alternative(data):
         if dividend_yield and dividend_yield > 0 and current_price and current_price > 0:
             current_dividend = (dividend_yield / 100) * current_price
 
-            # Calculate growth rate based on industry or use conservative estimate
+
             sector = data.get('sector', '')
-            growth_rate = 3  # Default conservative growth rate
+            growth_rate = 3
 
             if 'Technology' in sector or 'Software' in sector:
                 growth_rate = 5
             elif 'Consumer' in sector:
                 growth_rate = 4
 
-            # Use 10% as discount rate
+
             discount_rate = 0.10
             ddm_value = current_dividend * (1 + growth_rate / 100) / (discount_rate - growth_rate / 100)
 
@@ -770,12 +586,12 @@ def calculate_intrinsic_value_alternative(data):
     except:
         pass
 
-    # Method 3: PE Multiple
+
     try:
-        eps = data.get('eps') or data.get('trailingEPS')
+        eps = data.get('eps')
         if eps and eps > 0:
             sector = data.get('sector', '')
-            pe_multiple = 15  # Default PE multiple
+            pe_multiple = 15
 
             if 'Technology' in sector:
                 pe_multiple = 20
@@ -794,12 +610,12 @@ def calculate_intrinsic_value_alternative(data):
     except:
         pass
 
-    # Method 4: Book Value Method
+
     try:
         book_value = data.get('bookValue')
         if book_value and book_value > 0:
             sector = data.get('sector', '')
-            pb_multiple = 1.5  # Default PB multiple
+            pb_multiple = 1.5
 
             if 'Financial' in sector or 'Bank' in sector:
                 pb_multiple = 1.2
@@ -852,10 +668,7 @@ def buffett_analysis(stock_data):
         if 'error' in data:
             continue
 
-        if '.BO' in symbol:  # Skip BSE stocks for now
-            continue
 
-        # Initialize scores and analysis containers
         buffett_score = 0
         technical_score = 0
         buffett_reasons = []
@@ -869,7 +682,7 @@ def buffett_analysis(stock_data):
             if key_metric not in data or data[key_metric] is None:
                 missing_data.append(key_metric)
 
-        # Standardize debt_to_equity format
+
         if data.get('debt_to_equity') and data['debt_to_equity'] > 3:
             data['debt_to_equity'] = data['debt_to_equity'] / 100
 
@@ -948,6 +761,20 @@ def buffett_analysis(stock_data):
             data['margin_of_safety'] = margin_of_safety
             data['valuation_methods'] = valuation_methods
 
+
+            if margin_of_safety > 40:
+                buffett_score += 4
+                buffett_reasons.append(f"Huge margin of safety: {margin_of_safety:.2f}%")
+            elif margin_of_safety > 30:
+                buffett_score += 3
+                buffett_reasons.append(f"Substantial margin of safety: {margin_of_safety:.2f}%")
+            elif margin_of_safety > 20:
+                buffett_score += 2
+                buffett_reasons.append(f"Good margin of safety: {margin_of_safety:.2f}%")
+            elif margin_of_safety > 10:
+                buffett_score += 1
+                buffett_reasons.append(f"Some margin of safety: {margin_of_safety:.2f}%")
+
         # ----- TECHNICAL ANALYSIS (OPTIONAL) -----
 
         # 1. Analyze technical indicators
@@ -962,17 +789,11 @@ def buffett_analysis(stock_data):
         technical_reasons.extend(sector_reasons)
         warnings.extend(sector_warnings)
 
-        # 3. Ownership analysis (if available)
-        ownership_score, ownership_reasons, ownership_warnings = analyze_ownership_patterns(symbol, data)
-        technical_score += ownership_score
-        technical_reasons.extend(ownership_reasons)
-        warnings.extend(ownership_warnings)
-
-        # 4. Corporate actions analysis
-        corporate_score, corporate_reasons, corporate_warnings = analyze_corporate_actions(symbol, data)
-        technical_score += corporate_score
-        technical_reasons.extend(corporate_reasons)
-        warnings.extend(corporate_warnings)
+        # 3. Dividend analysis
+        dividend_score, dividend_reasons, dividend_warnings = analyze_dividend_policy(symbol, data)
+        technical_score += dividend_score
+        technical_reasons.extend(dividend_reasons)
+        warnings.extend(dividend_warnings)
 
         # ----- CALCULATE TOTAL SCORE -----
         total_score = buffett_score + technical_score
@@ -991,7 +812,7 @@ def buffett_analysis(stock_data):
         }
 
         # Add to picks if it meets the threshold
-        if total_score >= 10:
+        if total_score >= 16:
             buffett_picks[symbol] = {
                 'name': data['name'],
                 'sector': data.get('sector', 'Unknown'),
@@ -1013,15 +834,11 @@ def buffett_analysis(stock_data):
                 'valuation_methods': data.get('valuation_methods', {}),
                 'technical_indicators': {
                     'rsi': data.get('rsi'),
-                    'ma_50': data.get('ma_50'),
-                    'ma_200': data.get('ma_200'),
-                    'macd_line': data.get('macd_line'),
-                    'macd_signal': data.get('macd_signal'),
-                    'macd_histogram': data.get('macd_histogram')
+                    'ma_50': data.get('ma_50')
                 }
             }
 
-    # Save detailed analysis for all stocks
+
     os.makedirs('data', exist_ok=True)
     with open('data/detailed_analysis.json', 'w') as f:
         json.dump(detailed_analysis, f, indent=2)
@@ -1073,7 +890,7 @@ def generate_html_report(buffett_picks):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Enhanced Indian Stock Analysis - Buffett + Technical- Disclaimer:Not investment advice do your own research and analysis </title>
+        <title>Enhanced Indian Stock Analysis Disclaimer not investment advice do your own analysis and research - Buffett + Technical</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
         <style>
@@ -1236,7 +1053,7 @@ def generate_html_report(buffett_picks):
         <div class="container">
             <div class="row mt-4 mb-2">
                 <div class="col-md-8">
-                    <h1 class="display-4">Enhanced Indian Stock Analysis</h1>
+                    <h1 class="display-4">Enhanced Indian Stock Analysis -Disclaimer not investment advice do your own analysis and research</h1>
                     <p class="text-muted">Combining Buffett's principles with technical indicators | Last updated: """ + formatted_time + """</p>
                 </div>
                 <div class="col-md-4">
@@ -1308,18 +1125,16 @@ def generate_html_report(buffett_picks):
                                 <h6>Technical Indicators:</h6>
                                 <ol>
                                     <li>RSI (Relative Strength Index): Identifies overbought/oversold conditions</li>
-                                    <li>Moving Averages: 50-day and 200-day for trends and support/resistance</li>
-                                    <li>MACD: Momentum assessment and signal crossovers</li>
+                                    <li>Moving Averages: 50-day MA for trends and support/resistance</li>
+                                    <li>Price Momentum: Recent trend strength analysis</li>
                                 </ol>
                             </div>
                             <div class="col-md-6">
                                 <h6>Additional Analysis:</h6>
                                 <ol>
                                     <li>Sector Performance: Comparison against sector averages</li>
-                                    <li>Institutional Ownership: Changes in FII and DII holdings</li>
-                                    <li>Corporate Actions: Dividends, buybacks, and shareholder returns</li>
-                                    <li>Historical Valuations: Analysis of 5-year valuation ranges</li>
-                                    <li>Competitive Analysis: Peer comparison and market position</li>
+                                    <li>Dividend Analysis: Dividend yield and payout sustainability</li>
+                                    <li>Valuation Metrics: P/E ratio, P/B ratio evaluation</li>
                                 </ol>
                             </div>
                         </div>
@@ -1345,8 +1160,8 @@ def generate_html_report(buffett_picks):
     """
 
     for symbol, data in buffett_picks.items():
-        display_symbol = symbol.replace('.NS', '')
-        exchange = "NSE"
+        display_symbol = symbol.replace('.NS', '').replace('.BO', '')
+        exchange = "NSE" if '.NS' in symbol else "BSE" if '.BO' in symbol else "Unknown"
 
         market_cap = data.get('market_cap', 0) or 0
         market_cap_billions = market_cap / 1_000_000_000
@@ -1497,11 +1312,8 @@ def generate_html_report(buffett_picks):
         # Display technical indicators if available
         rsi = technical_indicators.get('rsi')
         ma_50 = technical_indicators.get('ma_50')
-        ma_200 = technical_indicators.get('ma_200')
-        macd_line = technical_indicators.get('macd_line')
-        macd_signal = technical_indicators.get('macd_signal')
 
-        has_technical_data = any(v is not None for v in [rsi, ma_50, ma_200, macd_line, macd_signal])
+        has_technical_data = rsi is not None or ma_50 is not None
 
         if has_technical_data:
             html += """
@@ -1513,29 +1325,19 @@ def generate_html_report(buffett_picks):
             if rsi is not None:
                 rsi_class = "success" if 30 <= rsi <= 70 else "danger" if rsi > 70 else "warning"
                 html += f"""
-                                    <div class="col-4 text-center">
+                                    <div class="col-6 text-center">
                                         <small>RSI</small>
                                         <div class="text-{rsi_class} fw-bold">{rsi:.1f}</div>
                                     </div>
                 """
 
-            if ma_50 is not None and ma_200 is not None:
-                cross_type = "Golden" if ma_50 > ma_200 else "Death"
-                cross_class = "success" if ma_50 > ma_200 else "danger"
+            if ma_50 is not None and price:
+                ma_status = "Above MA" if price > ma_50 else "Below MA"
+                ma_class = "success" if price > ma_50 else "danger"
                 html += f"""
-                                    <div class="col-4 text-center">
-                                        <small>MA Cross</small>
-                                        <div class="text-{cross_class} fw-bold">{cross_type}</div>
-                                    </div>
-                """
-
-            if macd_line is not None and macd_signal is not None:
-                macd_status = "Bullish" if macd_line > macd_signal else "Bearish"
-                macd_class = "success" if macd_line > macd_signal else "danger"
-                html += f"""
-                                    <div class="col-4 text-center">
-                                        <small>MACD</small>
-                                        <div class="text-{macd_class} fw-bold">{macd_status}</div>
+                                    <div class="col-6 text-center">
+                                        <small>50-day MA</small>
+                                        <div class="text-{ma_class} fw-bold">{ma_status}</div>
                                     </div>
                 """
 
@@ -1675,11 +1477,10 @@ def generate_html_report(buffett_picks):
                                 <div class="col-md-6">
                                     <h5>Technical & Quantitative Factors</h5>
                                     <ul>
-                                        <li><strong>Technical Indicators</strong>: RSI, Moving Averages, MACD</li>
+                                        <li><strong>Technical Indicators</strong>: RSI, Moving Averages</li>
                                         <li><strong>Sector Performance</strong>: Comparison against peers and sector trends</li>
-                                        <li><strong>Ownership Changes</strong>: Institutional buying and insider activity</li>
-                                        <li><strong>Historical Valuations</strong>: 5-year patterns and mean reversion potential</li>
-                                        <li><strong>Competitive Positioning</strong>: Industry standing and market share</li>
+                                        <li><strong>Dividend Analysis</strong>: Yield and payout sustainability</li>
+                                        <li><strong>Valuation Metrics</strong>: P/E ratio, P/B ratio analysis</li>
                                     </ul>
                                 </div>
                             </div>
@@ -1778,7 +1579,7 @@ def generate_html_report(buffett_picks):
 
 
 if __name__ == "__main__":
-    print("Starting enhanced ")
+    print("Starting enhanced Buffett analysis")
     stock_data = load_latest_data()
     buffett_picks = buffett_analysis(stock_data)
     generate_html_report(buffett_picks)
