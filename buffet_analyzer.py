@@ -1,8 +1,12 @@
 import json
 import os
+import numpy as np
 from datetime import datetime
 import pytz
 import re
+import math
+import statistics
+from collections import defaultdict
 
 
 def safe_format(value, format_spec=".2f"):
@@ -18,6 +22,130 @@ def load_latest_data():
     except Exception as e:
         print(f"Error loading data: {e}")
         return {}
+
+
+# ----- ENHANCED FUNDAMENTAL ANALYSIS -----
+
+def analyze_operating_efficiency(symbol, data):
+    """Analyze operating efficiency and profitability metrics"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    # Check for profit margin
+    profit_margin = data.get('profit_margin')
+    if profit_margin is not None:
+        if profit_margin > 20:
+            score += 3
+            reasons.append(f"Exceptional profit margin of {profit_margin:.2f}%")
+        elif profit_margin > 15:
+            score += 2
+            reasons.append(f"Strong profit margin of {profit_margin:.2f}%")
+        elif profit_margin > 10:
+            score += 1
+            reasons.append(f"Good profit margin of {profit_margin:.2f}%")
+    else:
+        warnings.append("Profit margin data not available")
+
+    # Check for ROE
+    roe = data.get('roe')
+    if roe is not None:
+        if roe > 20:
+            score += 3
+            reasons.append(f"Exceptional ROE of {roe:.2f}%")
+        elif roe > 15:
+            score += 2
+            reasons.append(f"Strong ROE of {roe:.2f}%")
+        elif roe > 10:
+            score += 1
+            reasons.append(f"Good ROE of {roe:.2f}%")
+    else:
+        warnings.append("ROE data not available")
+
+    # Check for ROA if available
+    roa = data.get('returnOnAssets')
+    if roa is not None:
+        roa = roa * 100  # Convert to percentage
+        if roa > 10:
+            score += 2
+            reasons.append(f"Exceptional ROA of {roa:.2f}%")
+        elif roa > 5:
+            score += 1
+            reasons.append(f"Strong ROA of {roa:.2f}%")
+
+    return score, reasons, warnings
+
+
+def analyze_financial_health(symbol, data):
+    """Analyze balance sheet strength and financial health"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    # Check for debt-to-equity
+    debt_to_equity = data.get('debt_to_equity')
+    if debt_to_equity is not None:
+        if debt_to_equity < 0.3:
+            score += 3
+            reasons.append(f"Minimal debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.5:
+            score += 2
+            reasons.append(f"Low debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity < 0.7:
+            score += 1
+            reasons.append(f"Moderate debt-to-equity ratio of {debt_to_equity:.2f}")
+        elif debt_to_equity > 1.5:
+            score -= 1
+            warnings.append(f"High debt-to-equity ratio of {debt_to_equity:.2f}")
+    else:
+        warnings.append("Debt-to-equity data not available")
+
+    # Check for interest coverage ratio if available
+    interest_coverage = data.get('interestCoverageRatio')
+    if interest_coverage is not None:
+        if interest_coverage > 10:
+            score += 2
+            reasons.append(f"Excellent interest coverage ratio of {interest_coverage:.2f}")
+        elif interest_coverage > 5:
+            score += 1
+            reasons.append(f"Strong interest coverage ratio of {interest_coverage:.2f}")
+        elif interest_coverage < 2:
+            score -= 1
+            warnings.append(f"Low interest coverage ratio of {interest_coverage:.2f}")
+
+    # Check for current ratio if available
+    current_ratio = data.get('currentRatio')
+    if current_ratio is not None:
+        if current_ratio > 2:
+            score += 1
+            reasons.append(f"Strong current ratio of {current_ratio:.2f}")
+        elif current_ratio < 1:
+            score -= 1
+            warnings.append(f"Weak current ratio of {current_ratio:.2f}")
+
+    # Free Cash Flow analysis
+    fcf = data.get('fcf')
+    if fcf is not None:
+        if fcf > 0:
+            market_cap = data.get('market_cap')
+            if market_cap and market_cap > 0:
+                fcf_yield = (fcf / market_cap) * 100
+                if fcf_yield > 8:
+                    score += 3
+                    reasons.append(f"Excellent FCF yield of {fcf_yield:.2f}%")
+                elif fcf_yield > 5:
+                    score += 2
+                    reasons.append(f"Strong FCF yield of {fcf_yield:.2f}%")
+                elif fcf_yield > 3:
+                    score += 1
+                    reasons.append(f"Positive FCF yield of {fcf_yield:.2f}%")
+            else:
+                score += 1
+                reasons.append("Positive free cash flow")
+    else:
+        warnings.append("Free cash flow data not available")
+
+    return score, reasons, warnings
 
 
 def analyze_industry_dynamics(symbol, data):
@@ -70,8 +198,8 @@ def analyze_regulatory_environment(symbol, data):
     sector = data.get('sector', 'Unknown')
 
     stable_regulatory_sectors = [
-        'Consumer Staples', 'Consumer Goods', 'Insurance', 'Banking','Pharmaceutical'
-        'Financial Services', 'Utilities'
+        'Consumer Staples', 'Consumer Goods', 'Insurance', 'Banking', 'Pharmaceutical'
+                                                                      'Financial Services', 'Utilities'
     ]
 
     challenging_regulatory_sectors = [
@@ -146,107 +274,6 @@ def analyze_macroeconomic_factors(symbol, data):
             reason = "Neutral macroeconomic assessment"
 
     return score, reason
-
-
-def analyze_corporate_governance(symbol, data):
-    name = data.get('name', '')
-
-    family_name_indicators = ["Tata", "Birla", "Ambani", "Bajaj", "Mahindra", "Godrej", "Hinduja", "Adani"]
-    is_family_business = any(family in name for family in family_name_indicators)
-
-    market_cap = data.get('market_cap', 0)
-    market_cap_billions = market_cap / 1_000_000_000 if market_cap else 0
-
-    dividend_yield = data.get('dividendYield', 0)
-    has_dividend = dividend_yield and dividend_yield > 0
-
-    score = 0
-    reasons = []
-
-    if is_family_business:
-        score += 1
-        reasons.append("Family-owned business with long-term focus")
-
-    if market_cap_billions > 50:
-        score += 1
-        reasons.append("Large established company with likely strong governance controls")
-    elif market_cap_billions > 10:
-        score += 0.5
-        reasons.append("Mid-sized company with established governance structures")
-
-    if has_dividend:
-        score += 1
-        reasons.append("Pays dividend, indicating shareholder-friendly management")
-
-    if not reasons:
-        reasons.append("Neutral corporate governance assessment")
-
-    return score, ", ".join(reasons)
-
-
-def analyze_india_cultural_fit(symbol, data):
-    name = data.get('name', '')
-    sector = data.get('sector', 'Unknown')
-
-    is_indian_company = '.NS' in symbol
-
-    culturally_aligned_sectors = [
-        'Consumer Goods', 'Food', 'Retail', 'Textiles', 'FMCG',
-        'Automotive', 'Entertainment', 'Media'
-    ]
-
-    local_adaptation_sectors = [
-        'Financial Services', 'Banking', 'Insurance', 'Healthcare'
-    ]
-
-    rural_market_keywords = [
-        'rural', 'village', 'tier 3', 'tier-3', 'bharat', 'gram', 'panchayat'
-    ]
-
-    company_desc = data.get('longBusinessSummary', '').lower() if data.get('longBusinessSummary') else ''
-    has_rural_focus = any(keyword in company_desc for keyword in rural_market_keywords)
-
-    trusted_indian_conglomerates = [
-        'Tata', 'Birla', 'Reliance', 'Mahindra', 'Bajaj', 'ITC',
-        'Godrej', 'Infosys', 'Wipro', 'HDFC'
-    ]
-
-    has_trusted_brand = any(brand in name for brand in trusted_indian_conglomerates)
-
-    score = 0
-    reasons = []
-
-    if is_indian_company:
-        score += 1
-        reasons.append("Indian company with inherent understanding of local market")
-
-        if any(ind in sector for ind in culturally_aligned_sectors):
-            score += 1
-            reasons.append(f"Strong cultural alignment in {sector} sector")
-
-        if has_rural_focus:
-            score += 1
-            reasons.append("Demonstrated focus on rural Indian markets")
-
-        if has_trusted_brand:
-            score += 1
-            reasons.append("Trusted Indian brand with established cultural relevance")
-    else:
-        if has_rural_focus:
-            score += 1
-            reasons.append("Foreign company with demonstrated rural India focus")
-
-        if any(ind in sector for ind in local_adaptation_sectors):
-            score -= 1
-            reasons.append(f"Foreign company in {sector} sector that requires deep local knowledge")
-
-    if not reasons:
-        if is_indian_company:
-            reasons.append("Indian company with neutral cultural fit assessment")
-        else:
-            reasons.append("Foreign company with unassessed cultural adaptation")
-
-    return score, ", ".join(reasons)
 
 
 def analyze_economic_moat(symbol, data):
@@ -329,162 +356,462 @@ def analyze_economic_moat(symbol, data):
     return score, ", ".join(moat_types)
 
 
-def analyze_owner_oriented_management(symbol, data):
-    name = data.get('name', '')
-
-    family_owned_indicators = ["Tata", "Birla", "Ambani", "Bajaj", "Mahindra",
-                               "Godrej", "Hinduja", "Adani", "Premji"]
-
-    is_family_owned = any(family in name for family in family_owned_indicators)
-
-    insider_ownership = data.get('heldPercentInsiders', 0)
-
-    buyback_keywords = ['buyback', 'share repurchase', 'treasury stock']
-    company_desc = data.get('longBusinessSummary', '').lower() if data.get('longBusinessSummary') else ''
-
-    recent_buybacks = any(keyword in company_desc for keyword in buyback_keywords)
-
+def analyze_valuation(symbol, data):
+    """Analyze valuation metrics"""
     score = 0
     reasons = []
+    warnings = []
 
-    if is_family_owned:
-        score += 1
-        reasons.append("Family-owned or founder-led business with long-term orientation")
-
-    if insider_ownership > 0:
-        if insider_ownership > 0.25:
+    # P/E Ratio analysis
+    pe_ratio = data.get('pe_ratio')
+    if pe_ratio is not None and pe_ratio > 0:
+        if pe_ratio < 15:
+            score += 3
+            reasons.append(f"Attractive P/E ratio of {pe_ratio:.2f}")
+        elif pe_ratio < 20:
             score += 2
-            reasons.append(f"High insider ownership ({insider_ownership * 100:.1f}%)")
-        elif insider_ownership > 0.10:
+            reasons.append(f"Reasonable P/E ratio of {pe_ratio:.2f}")
+        elif pe_ratio < 25:
             score += 1
-            reasons.append(f"Moderate insider ownership ({insider_ownership * 100:.1f}%)")
+            reasons.append(f"Acceptable P/E ratio of {pe_ratio:.2f}")
+        elif pe_ratio > 30:
+            score -= 1
+            warnings.append(f"High P/E ratio of {pe_ratio:.2f}")
+    else:
+        warnings.append("P/E ratio data not available")
 
-    if recent_buybacks:
-        score += 1
-        reasons.append("History of share repurchases indicates shareholder-friendly capital allocation")
+    # P/B Ratio analysis
+    pb_ratio = data.get('pb_ratio')
+    if pb_ratio is not None and pb_ratio > 0:
+        sector = data.get('sector', 'Unknown')
+        is_financial = any(s in sector for s in ['Bank', 'Financial', 'Insurance'])
 
-    if '.NS' in symbol:
-        dividend_yield = data.get('dividendYield', 0)
-        if dividend_yield and dividend_yield > 0:
-            if dividend_yield > 3:
+        threshold = 2 if is_financial else 3
+        if pb_ratio < threshold * 0.5:
+            score += 2
+            reasons.append(f"Very attractive P/B ratio of {pb_ratio:.2f}")
+        elif pb_ratio < threshold:
+            score += 1
+            reasons.append(f"Reasonable P/B ratio of {pb_ratio:.2f}")
+        elif pb_ratio > threshold * 2:
+            score -= 1
+            warnings.append(f"High P/B ratio of {pb_ratio:.2f}")
+
+    # Intrinsic value and margin of safety
+    intrinsic_value = data.get('intrinsic_value')
+    current_price = data.get('current_price')
+    margin_of_safety = data.get('margin_of_safety')
+
+    if intrinsic_value is not None and current_price is not None and intrinsic_value > 0:
+        if margin_of_safety is None:
+            margin_of_safety = ((
+                                            intrinsic_value - current_price) / intrinsic_value) * 100 if current_price < intrinsic_value else 0
+
+        if margin_of_safety > 40:
+            score += 4
+            reasons.append(f"Huge margin of safety: {margin_of_safety:.2f}%")
+        elif margin_of_safety > 30:
+            score += 3
+            reasons.append(f"Substantial margin of safety: {margin_of_safety:.2f}%")
+        elif margin_of_safety > 20:
+            score += 2
+            reasons.append(f"Good margin of safety: {margin_of_safety:.2f}%")
+        elif margin_of_safety > 10:
+            score += 1
+            reasons.append(f"Some margin of safety: {margin_of_safety:.2f}%")
+        elif margin_of_safety < 0:
+            score -= 1
+            warnings.append(f"No margin of safety, stock may be overvalued by {-margin_of_safety:.2f}%")
+    else:
+        warnings.append("Intrinsic value calculation not available")
+
+    # Dividend yield if available
+    dividend_yield = data.get('dividendYield')
+    if dividend_yield is not None and dividend_yield > 0:
+        if dividend_yield > 4:
+            score += 2
+            reasons.append(f"High dividend yield of {dividend_yield:.2f}%")
+        elif dividend_yield > 2:
+            score += 1
+            reasons.append(f"Good dividend yield of {dividend_yield:.2f}%")
+
+    return score, reasons, warnings
+
+
+# ----- TECHNICAL INDICATORS ANALYSIS -----
+
+def analyze_technical_indicators(symbol, data):
+    """Analyze technical indicators when available"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    # Check if technical data is available
+    price_history_available = data.get('price_history_available', False)
+    if not price_history_available:
+        warnings.append("Technical analysis skipped - price history not available")
+        return score, reasons, warnings
+
+    # RSI Analysis
+    rsi = data.get('rsi')
+    if rsi is not None:
+        if rsi < 30:
+            score += 2
+            reasons.append(f"Oversold RSI ({rsi:.2f}) suggests potential buying opportunity")
+        elif rsi < 40:
+            score += 1
+            reasons.append(f"RSI ({rsi:.2f}) indicates potential undervaluation")
+        elif rsi > 70:
+            score -= 1
+            reasons.append(f"Overbought RSI ({rsi:.2f}) suggests potential overvaluation")
+    else:
+        warnings.append("RSI data not available")
+
+    # Moving Average Analysis
+    ma_50 = data.get('ma_50')
+    ma_200 = data.get('ma_200')
+    current_price = data.get('current_price')
+
+    if ma_50 is not None and ma_200 is not None:
+        # Golden Cross / Death Cross
+        if ma_50 > ma_200:
+            score += 1
+            reasons.append(f"Golden Cross pattern (50-day MA above 200-day MA) indicates bullish trend")
+        elif ma_50 < ma_200:
+            score -= 1
+            reasons.append(f"Death Cross pattern (50-day MA below 200-day MA) indicates bearish trend")
+
+        # Current price relative to MAs
+        if current_price is not None:
+            if current_price > ma_50 and current_price > ma_200:
                 score += 1
-                reasons.append(f"Strong dividend yield ({dividend_yield:.1f}%) indicates shareholder-friendly policies")
-            elif dividend_yield > 1:
+                reasons.append(f"Price above both 50-day and 200-day moving averages, suggesting bullish trend")
+            elif current_price < ma_50 and current_price < ma_200:
+                score -= 1
+                reasons.append(f"Price below both 50-day and 200-day moving averages, suggesting bearish trend")
+    elif ma_50 is not None:
+        if current_price is not None:
+            if current_price > ma_50:
                 score += 0.5
-                reasons.append(f"Modest dividend yield ({dividend_yield:.1f}%) indicates shareholder return focus")
-
-    if not reasons:
-        reasons.append("Insufficient information on management orientation")
-
-    return score, ", ".join(reasons)
-
-
-def check_recent_performance_decline(symbol, data):
-    earnings_growth = data.get('earningsGrowth', 0)
-    revenue_growth = data.get('revenueGrowth', 0)
-    earnings_quarterly_growth = data.get('earningsQuarterlyGrowth', 0)
-
-    score_penalty = 0
-    reasons = []
-
-    if earnings_growth is not None and earnings_growth < -0.05:
-        score_penalty -= 3
-        reasons.append(f"Recent earnings decline of {earnings_growth * 100:.1f}%")
-
-    if revenue_growth is not None and revenue_growth < -0.05:
-        score_penalty -= 2
-        reasons.append(f"Recent revenue decline of {revenue_growth * 100:.1f}%")
-
-    if earnings_quarterly_growth is not None and earnings_quarterly_growth < -0.05:
-        score_penalty -= 2
-        reasons.append(f"Recent quarterly earnings decline of {earnings_quarterly_growth * 100:.1f}%")
-
-    if reasons:
-        return score_penalty, ", ".join(reasons)
+                reasons.append(f"Price above 50-day moving average, suggesting near-term bullish trend")
+            else:
+                score -= 0.5
+                reasons.append(f"Price below 50-day moving average, suggesting near-term bearish trend")
     else:
-        return 0, ""
+        warnings.append("Moving average data not available")
 
+    # MACD Analysis
+    macd_line = data.get('macd_line')
+    macd_signal = data.get('macd_signal')
+    macd_histogram = data.get('macd_histogram')
 
-def validate_unusual_metrics(symbol, data):
-    sector = data.get('sector', '')
-    market_cap = data.get('market_cap', 0) or 0
-    fcf = data.get('fcf', 0) or 0
-
-    score_penalty = 0
-    reasons = []
-
-    if market_cap > 0 and fcf > 0:
-        fcf_yield = fcf / market_cap
-
-        if 'Financial' in sector and fcf_yield > 0.10:
-            score_penalty -= 3
-            reasons.append(f"Unusually high FCF yield ({fcf_yield * 100:.1f}%) for financial sector")
-        elif fcf_yield > 0.20:
-            score_penalty -= 2
-            reasons.append(f"Suspiciously high FCF yield ({fcf_yield * 100:.1f}%)")
-
-    debt_to_equity = data.get('debt_to_equity', 0)
-    if debt_to_equity is not None:
-        if debt_to_equity > 10:
-            score_penalty -= 2
-            reasons.append(f"Suspiciously high debt-to-equity ratio of {debt_to_equity:.2f}")
-
-    if reasons:
-        return score_penalty, ", ".join(reasons)
+    if macd_line is not None and macd_signal is not None:
+        if macd_line > macd_signal and macd_histogram > 0:
+            score += 2
+            reasons.append(f"Bullish MACD crossover (MACD Line above Signal Line)")
+        elif macd_line < macd_signal and macd_histogram < 0:
+            score -= 1
+            reasons.append(f"Bearish MACD crossover (MACD Line below Signal Line)")
     else:
-        return 0, ""
+        warnings.append("MACD data not available")
 
+    return score, reasons, warnings
+
+
+# ----- SECTOR PERFORMANCE ANALYSIS -----
+
+def analyze_sector_performance(symbol, data, all_stocks_data):
+    """Compare stock against sector averages using consistently available metrics"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    sector = data.get('sector', 'Unknown')
+    if sector == 'Unknown':
+        warnings.append("Unable to perform sector analysis: sector information missing")
+        return score, reasons, warnings
+
+    # Only use consistently available metrics
+    reliable_metrics = {
+        'roe': {'higher_better': True, 'name': 'Return on Equity'},
+        'debt_to_equity': {'higher_better': False, 'name': 'Debt-to-Equity Ratio'},
+        'pe_ratio': {'higher_better': False, 'name': 'P/E Ratio'}
+    }
+
+    # Collect sector peers
+    sector_stocks = {}
+    for sym, stock_data in all_stocks_data.items():
+        if 'error' in stock_data:
+            continue
+        if stock_data.get('sector') == sector and sym != symbol:
+            sector_stocks[sym] = stock_data
+
+    if len(sector_stocks) < 2:
+        warnings.append(f"Not enough peers in {sector} sector for comparison")
+        return score, reasons, warnings
+
+    # Compare across available metrics
+    outperformance_count = 0
+    total_metrics_compared = 0
+
+    for metric, props in reliable_metrics.items():
+        # Only include the metric if it's available for this stock
+        if metric not in data or data[metric] is None:
+            continue
+
+        # Get peer values for this metric
+        peer_values = [s[metric] for s in sector_stocks.values()
+                       if metric in s and s[metric] is not None]
+
+        if len(peer_values) < 2:
+            continue
+
+        # Calculate sector average
+        sector_avg = sum(peer_values) / len(peer_values)
+        data[f'sector_avg_{metric}'] = sector_avg
+
+        # Compare performance
+        total_metrics_compared += 1
+        performance_ratio = data[metric] / sector_avg if sector_avg != 0 else 1
+
+        # For metrics where higher is better
+        if props['higher_better'] and performance_ratio > 1.2:
+            score += 1
+            outperformance_count += 1
+            reasons.append(
+                f"Superior {props['name']} ({data[metric]:.2f}) compared to sector average ({sector_avg:.2f})")
+
+        # For metrics where lower is better
+        elif not props['higher_better'] and performance_ratio < 0.8:
+            score += 1
+            outperformance_count += 1
+            reasons.append(
+                f"Superior {props['name']} ({data[metric]:.2f}) compared to sector average ({sector_avg:.2f})")
+
+    # If we compared at least 2 metrics
+    if total_metrics_compared >= 2:
+        if outperformance_count == total_metrics_compared:
+            score += 1  # Bonus for outperforming in all metrics
+            reasons.append(f"Outperforms sector in all {total_metrics_compared} key metrics")
+    else:
+        warnings.append(f"Limited sector comparison: only {total_metrics_compared} metrics available")
+
+    return score, reasons, warnings
+
+
+# ----- OWNERSHIP ANALYSIS -----
+
+def analyze_ownership_patterns(symbol, data):
+    """Analyze ownership patterns if data is available"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    # Check if shareholding data is available
+    shareholding_data_available = data.get('shareholding_data_available', False)
+    if not shareholding_data_available:
+        warnings.append("Ownership analysis skipped - shareholding data not available")
+        return score, reasons, warnings
+
+    # Promoter holdings analysis
+    promoter_holding = data.get('promoterHolding')
+    if promoter_holding is not None:
+        if promoter_holding > 50:
+            score += 2
+            reasons.append(f"Strong promoter commitment with {promoter_holding:.2f}% holding")
+        elif promoter_holding > 30:
+            score += 1
+            reasons.append(f"Significant promoter holding of {promoter_holding:.2f}%")
+
+    # Changes in holdings
+    promoter_change = data.get('promoterHoldingChange')
+    if promoter_change is not None:
+        if promoter_change > 2:
+            score += 2
+            reasons.append(f"Recent promoter buying (+{promoter_change:.2f}%)")
+        elif promoter_change > 0.5:
+            score += 1
+            reasons.append(f"Modest increase in promoter holding (+{promoter_change:.2f}%)")
+        elif promoter_change < -2:
+            score -= 2
+            warnings.append(f"Significant promoter selling ({promoter_change:.2f}%)")
+        elif promoter_change < -0.5:
+            score -= 1
+            warnings.append(f"Recent promoter selling ({promoter_change:.2f}%)")
+
+    # Institutional holdings
+    fii_holding = data.get('fiiHolding')
+    dii_holding = data.get('diiHolding')
+
+    if fii_holding is not None and dii_holding is not None:
+        total_institutional = fii_holding + dii_holding
+        if total_institutional > 45:
+            score += 1
+            reasons.append(f"Strong institutional interest ({total_institutional:.2f}% total holding)")
+
+    # Changes in institutional holdings
+    fii_change = data.get('fiiHoldingChange')
+    dii_change = data.get('diiHoldingChange')
+
+    if fii_change is not None and dii_change is not None:
+        combined_change = fii_change + dii_change
+        if combined_change > 3:
+            score += 1
+            reasons.append(f"Strong institutional buying (+{combined_change:.2f}%)")
+        elif combined_change < -3:
+            score -= 1
+            warnings.append(f"Significant institutional selling ({combined_change:.2f}%)")
+
+    return score, reasons, warnings
+
+
+# ----- DIVIDEND AND CORPORATE ACTIONS ANALYSIS -----
+
+def analyze_corporate_actions(symbol, data):
+    """Analyze dividends and other corporate actions if available"""
+    score = 0
+    reasons = []
+    warnings = []
+
+    # Check dividend yield
+    dividend_yield = data.get('dividendYield')
+    if dividend_yield is not None and dividend_yield > 0:
+        sector = data.get('sector', 'Unknown')
+        is_high_yield_sector = any(s in sector for s in ['Utility', 'REIT', 'Energy'])
+
+        threshold = 4 if is_high_yield_sector else 2
+        if dividend_yield > threshold * 1.5:
+            score += 2
+            reasons.append(f"Excellent dividend yield of {dividend_yield:.2f}%")
+        elif dividend_yield > threshold:
+            score += 1
+            reasons.append(f"Good dividend yield of {dividend_yield:.2f}%")
+
+    # Check payout ratio
+    payout_ratio = data.get('payoutRatio')
+    if payout_ratio is not None:
+        if 30 <= payout_ratio <= 60:
+            score += 1
+            reasons.append(f"Healthy dividend payout ratio of {payout_ratio:.2f}%")
+        elif payout_ratio > 80:
+            score -= 1
+            warnings.append(f"High payout ratio of {payout_ratio:.2f}% may be unsustainable")
+
+    # Check for buybacks
+    has_recent_buyback = data.get('hasRecentBuyback', False)
+    if has_recent_buyback:
+        score += 2
+        reasons.append("Recent share buyback indicates shareholder-friendly management")
+
+    # Check corporate actions data availability
+    corporate_actions_available = data.get('corporate_actions_available', False)
+    if not corporate_actions_available and dividend_yield is None:
+        warnings.append("Corporate actions analysis limited - data not available")
+
+    return score, reasons, warnings
+
+
+# ----- INTRINSIC VALUE CALCULATION -----
 
 def calculate_intrinsic_value_alternative(data):
+    """Calculate intrinsic value using alternative methods based on available data"""
     methods = {}
 
+    # Method 1: Graham's formula
     try:
-        eps = data.get('eps', 0) or data.get('trailingEPS', 0) or 0
-        if eps > 0:
-            book_value = data.get('bookValue', 0) or 0
-            graham_value = (eps * (8.5 + (2 * 5))) * 4.4 / 5.8  # Assuming 5% growth
-            if book_value > 0:
-                methods['graham'] = {
-                    'value': graham_value,
-                    'description': "Benjamin Graham's formula (V = EPS × (8.5 + 2g) × 4.4/Y)"
-                }
-    except:
-        pass
+        eps = data.get('eps') or data.get('trailingEPS')
+        if eps and eps > 0:
+            # Basic growth estimate based on industry
+            sector = data.get('sector', '')
+            growth_rate = 5  # Default growth rate
 
-    
-    try:
-        eps = data.get('eps', 0) or data.get('trailingEPS', 0) or 0
-        if eps > 0:
-            epv = eps / 0.09  
-            methods['epv'] = {
-                'value': epv,
-                'description': "Earnings Power Value (EPV = adjusted earnings / cap rate)"
+            if 'Technology' in sector or 'Software' in sector:
+                growth_rate = 8
+            elif 'Consumer' in sector:
+                growth_rate = 6
+            elif 'Health' in sector:
+                growth_rate = 7
+            elif 'Financial' in sector or 'Bank' in sector:
+                growth_rate = 5
+
+            graham_value = (eps * (8.5 + (2 * growth_rate)))
+            methods['graham'] = {
+                'value': graham_value,
+                'description': f"Graham's formula with {growth_rate}% growth estimate"
             }
     except:
         pass
 
-    
+    # Method 2: Dividend Discount Model
     try:
-        eps = data.get('eps', 0) or data.get('trailingEPS', 0) or 0
-        sector = data.get('sector', 'Unknown')
+        dividend_yield = data.get('dividendYield')
+        current_price = data.get('current_price')
 
-        if eps > 0:
-            pe_multiple = 15  
+        if dividend_yield and dividend_yield > 0 and current_price and current_price > 0:
+            current_dividend = (dividend_yield / 100) * current_price
 
-            
+            # Calculate growth rate based on industry or use conservative estimate
+            sector = data.get('sector', '')
+            growth_rate = 3  # Default conservative growth rate
+
+            if 'Technology' in sector or 'Software' in sector:
+                growth_rate = 5
+            elif 'Consumer' in sector:
+                growth_rate = 4
+
+            # Use 10% as discount rate
+            discount_rate = 0.10
+            ddm_value = current_dividend * (1 + growth_rate / 100) / (discount_rate - growth_rate / 100)
+
+            methods['ddm'] = {
+                'value': ddm_value,
+                'description': f"Dividend Discount Model with {growth_rate}% growth"
+            }
+    except:
+        pass
+
+    # Method 3: PE Multiple
+    try:
+        eps = data.get('eps') or data.get('trailingEPS')
+        if eps and eps > 0:
+            sector = data.get('sector', '')
+            pe_multiple = 15  # Default PE multiple
+
             if 'Technology' in sector:
                 pe_multiple = 20
             elif 'Consumer' in sector:
                 pe_multiple = 18
             elif 'Utilities' in sector:
-                pe_multiple = 16
+                pe_multiple = 14
             elif 'Financial' in sector:
                 pe_multiple = 12
 
             pe_value = eps * pe_multiple
             methods['pe_multiple'] = {
                 'value': pe_value,
-                'description': f"P/E Multiple ({pe_multiple}x earnings)"
+                'description': f"P/E Multiple Method ({pe_multiple}x earnings)"
+            }
+    except:
+        pass
+
+    # Method 4: Book Value Method
+    try:
+        book_value = data.get('bookValue')
+        if book_value and book_value > 0:
+            sector = data.get('sector', '')
+            pb_multiple = 1.5  # Default PB multiple
+
+            if 'Financial' in sector or 'Bank' in sector:
+                pb_multiple = 1.2
+            elif 'Technology' in sector:
+                pb_multiple = 3.0
+            elif 'Consumer' in sector:
+                pb_multiple = 2.5
+
+            book_value_based = book_value * pb_multiple
+            methods['book_value'] = {
+                'value': book_value_based,
+                'description': f"Book Value Method ({pb_multiple}x book value)"
             }
     except:
         pass
@@ -493,20 +820,17 @@ def calculate_intrinsic_value_alternative(data):
 
 
 def calculate_final_intrinsic_value(data, alternative_methods):
-    
+    """Calculate final intrinsic value based on available methods"""
     intrinsic_value = data.get('intrinsic_value', 0)
 
     if not intrinsic_value or intrinsic_value == 0:
-        
         if alternative_methods:
-            
             values = [method_data['value'] for method_data in alternative_methods.values()]
 
             if values:
-                
-                intrinsic_value = sum(values) / len(values)
+                # Use median instead of mean to avoid outliers
+                intrinsic_value = statistics.median(values)
 
-                
                 current_price = data.get('current_price', 0) or 0
                 if current_price > 0 and intrinsic_value > current_price:
                     margin_of_safety = ((intrinsic_value - current_price) / intrinsic_value) * 100
@@ -515,172 +839,69 @@ def calculate_final_intrinsic_value(data, alternative_methods):
 
                 return intrinsic_value, margin_of_safety, alternative_methods
 
-    
     return intrinsic_value, data.get('margin_of_safety', 0), alternative_methods
 
 
+# ----- INTEGRATED ANALYSIS FUNCTION -----
+
 def buffett_analysis(stock_data):
     buffett_picks = {}
-
-    buffett_preferred_sectors = [
-        'Financial Services', 'Consumer Defensive', 'Technology', 'Financial',
-        'Consumer Goods', 'Healthcare', 'Consumer Staples', 'Insurance', 'Banking',
-        'Food & Beverage', 'Retail', 'Communication Services', 'Utilities', 'Pharmaceuticals'
-    ]
-
-    buffett_avoided_sectors = [
-        'Biotechnology', 'Cryptocurrency', 'Cannabis',
-        'Mining', 'Oil & Gas E&P', 'Airlines'
-    ]
+    detailed_analysis = {}
 
     for symbol, data in stock_data.items():
         if 'error' in data:
             continue
 
-        if '.BO' in symbol:
+        if '.BO' in symbol:  # Skip BSE stocks for now
             continue
 
-        score = 0
-        reasons = []
+        # Initialize scores and analysis containers
+        buffett_score = 0
+        technical_score = 0
+        buffett_reasons = []
+        technical_reasons = []
         warnings = []
         missing_data = []
         qualitative_factors = {}
-        data_quality_issues = []
 
+        # Check for missing key metrics
         for key_metric in ['roe', 'debt_to_equity', 'pe_ratio', 'market_cap', 'current_price']:
             if key_metric not in data or data[key_metric] is None:
                 missing_data.append(key_metric)
 
+        # Standardize debt_to_equity format
         if data.get('debt_to_equity') and data['debt_to_equity'] > 3:
             data['debt_to_equity'] = data['debt_to_equity'] / 100
 
-        validation_score, validation_reason = validate_unusual_metrics(symbol, data)
-        if validation_score < 0:
-            score += validation_score
-            data_quality_issues.append(validation_reason)
+        # ----- FUNDAMENTAL ANALYSIS (BUFFETT CRITERIA) -----
 
-        decline_score, decline_reason = check_recent_performance_decline(symbol, data)
-        if decline_score < 0:
-            score += decline_score
-            warnings.append(decline_reason)
+        # 1. Analyze operating efficiency
+        efficiency_score, efficiency_reasons, efficiency_warnings = analyze_operating_efficiency(symbol, data)
+        buffett_score += efficiency_score
+        buffett_reasons.extend(efficiency_reasons)
+        warnings.extend(efficiency_warnings)
 
-        sector = data.get('sector', 'Unknown')
-        if any(preferred in sector for preferred in buffett_preferred_sectors):
-            score += 1
-            reasons.append(f"Within Buffett's circle of competence: {sector}")
-        elif any(avoided in sector for avoided in buffett_avoided_sectors):
-            warnings.append(f"Outside Buffett's typical interests: {sector}")
+        # 2. Analyze financial health
+        health_score, health_reasons, health_warnings = analyze_financial_health(symbol, data)
+        buffett_score += health_score
+        buffett_reasons.extend(health_reasons)
+        warnings.extend(health_warnings)
 
-        if data.get('roe'):
-            if data['roe'] > 20:
-                score += 3
-                reasons.append(f"Exceptional ROE of {data['roe']:.2f}%")
-            elif data['roe'] > 15:
-                score += 2
-                reasons.append(f"Strong ROE of {data['roe']:.2f}%")
-            elif data['roe'] > 10:
-                score += 1
-                reasons.append(f"Decent ROE of {data['roe']:.2f}%")
+        # 3. Analyze valuation
+        valuation_score, valuation_reasons, valuation_warnings = analyze_valuation(symbol, data)
+        buffett_score += valuation_score
+        buffett_reasons.extend(valuation_reasons)
+        warnings.extend(valuation_warnings)
 
-        if data.get('debt_to_equity') is not None:
-            if data['debt_to_equity'] < 0.3:
-                score += 3
-                reasons.append(f"Minimal debt-to-equity ratio of {data['debt_to_equity']:.2f}")
-            elif data['debt_to_equity'] < 0.5:
-                score += 2
-                reasons.append(f"Low debt-to-equity ratio of {data['debt_to_equity']:.2f}")
-            elif data['debt_to_equity'] < 0.7:
-                score += 1
-                reasons.append(f"Moderate debt-to-equity ratio of {data['debt_to_equity']:.2f}")
-            else:
-                warnings.append(f"High debt-to-equity ratio of {data['debt_to_equity']:.2f}")
-
-        if data.get('earnings_growth'):
-            if data['earnings_growth'] > 15:
-                score += 3
-                reasons.append(f"Excellent earnings growth of {data['earnings_growth']:.2f}%")
-            elif data['earnings_growth'] > 10:
-                score += 2
-                reasons.append(f"Strong earnings growth of {data['earnings_growth']:.2f}%")
-            elif data['earnings_growth'] > 5:
-                score += 1
-                reasons.append(f"Positive earnings growth of {data['earnings_growth']:.2f}%")
-            elif data['earnings_growth'] < 0:
-                warnings.append(f"Negative earnings growth of {data['earnings_growth']:.2f}%")
-
-        if data.get('fcf'):
-            if data['fcf'] > 0:
-                if data.get('market_cap') and data['market_cap'] > 0:
-                    fcf_yield = (data['fcf'] / data['market_cap']) * 100
-                    if fcf_yield > 8:
-                        score += 3
-                        reasons.append(f"Excellent FCF yield of {fcf_yield:.2f}%")
-                    elif fcf_yield > 5:
-                        score += 2
-                        reasons.append(f"Strong FCF yield of {fcf_yield:.2f}%")
-                    elif fcf_yield > 3:
-                        score += 1
-                        reasons.append(f"Positive FCF yield of {fcf_yield:.2f}%")
-                else:
-                    score += 1
-                    reasons.append("Positive free cash flow")
-
-        
-        alternative_valuation_methods = calculate_intrinsic_value_alternative(data)
-        intrinsic_value, margin_of_safety, valuation_methods = calculate_final_intrinsic_value(
-            data, alternative_valuation_methods)
-
-        
-        if intrinsic_value and intrinsic_value > 0:
-            data['intrinsic_value'] = intrinsic_value
-            data['margin_of_safety'] = margin_of_safety
-            data['valuation_methods'] = valuation_methods
-
-        if data.get('margin_of_safety') and data.get('intrinsic_value', 0) > 0:
-            if data['margin_of_safety'] > 40:
-                score += 4
-                reasons.append(f"Huge margin of safety: {data['margin_of_safety']:.2f}%")
-            elif data['margin_of_safety'] > 30:
-                score += 3
-                reasons.append(f"Substantial margin of safety: {data['margin_of_safety']:.2f}%")
-            elif data['margin_of_safety'] > 20:
-                score += 2
-                reasons.append(f"Good margin of safety: {data['margin_of_safety']:.2f}%")
-            elif data['margin_of_safety'] > 10:
-                score += 1
-                reasons.append(f"Some margin of safety: {data['margin_of_safety']:.2f}%")
-
-        if data.get('pe_ratio') and data['pe_ratio'] > 0:
-            if data['pe_ratio'] < 15:
-                score += 3
-                reasons.append(f"Attractive P/E ratio of {data['pe_ratio']:.2f}")
-            elif data['pe_ratio'] < 20:
-                score += 2
-                reasons.append(f"Reasonable P/E ratio of {data['pe_ratio']:.2f}")
-            elif data['pe_ratio'] < 25:
-                score += 1
-                reasons.append(f"Acceptable P/E ratio of {data['pe_ratio']:.2f}")
-            else:
-                warnings.append(f"High P/E ratio of {data['pe_ratio']:.2f}")
-
-        if data.get('market_cap'):
-            market_cap_billions = data['market_cap'] / 1_000_000_000
-            if market_cap_billions >= 10:
-                score += 1
-                reasons.append(f"Large established company (₹{market_cap_billions:.2f}B market cap)")
-            elif market_cap_billions >= 1:
-                score += 0.5
-            elif market_cap_billions < 0.2:
-                warnings.append(f"Very small company (₹{market_cap_billions:.2f}B market cap)")
-
+        # 4. Analyze qualitative factors
         industry_score, industry_reason = analyze_industry_dynamics(symbol, data)
         qualitative_factors['industry_dynamics'] = {
             'score': industry_score,
             'reason': industry_reason
         }
-        score += industry_score
+        buffett_score += industry_score
         if industry_score > 0:
-            reasons.append(industry_reason)
+            buffett_reasons.append(industry_reason)
         elif industry_score < 0:
             warnings.append(industry_reason)
 
@@ -689,9 +910,9 @@ def buffett_analysis(stock_data):
             'score': regulatory_score,
             'reason': regulatory_reason
         }
-        score += regulatory_score
+        buffett_score += regulatory_score
         if regulatory_score > 0:
-            reasons.append(regulatory_reason)
+            buffett_reasons.append(regulatory_reason)
         elif regulatory_score < 0:
             warnings.append(regulatory_reason)
 
@@ -700,61 +921,77 @@ def buffett_analysis(stock_data):
             'score': macro_score,
             'reason': macro_reason
         }
-        score += macro_score
+        buffett_score += macro_score
         if macro_score > 0:
-            reasons.append(macro_reason)
+            buffett_reasons.append(macro_reason)
         elif macro_score < 0:
             warnings.append(macro_reason)
-
-        governance_score, governance_reason = analyze_corporate_governance(symbol, data)
-        qualitative_factors['corporate_governance'] = {
-            'score': governance_score,
-            'reason': governance_reason
-        }
-        score += governance_score
-        if governance_score > 0:
-            reasons.append(governance_reason)
-        elif governance_score < 0:
-            warnings.append(governance_reason)
-
-        india_fit_score, india_fit_reason = analyze_india_cultural_fit(symbol, data)
-        qualitative_factors['india_cultural_fit'] = {
-            'score': india_fit_score,
-            'reason': india_fit_reason
-        }
-        score += india_fit_score
-        if india_fit_score > 0:
-            reasons.append(india_fit_reason)
-        elif india_fit_score < 0:
-            warnings.append(india_fit_reason)
 
         moat_score, moat_reason = analyze_economic_moat(symbol, data)
         qualitative_factors['economic_moat'] = {
             'score': moat_score,
             'reason': moat_reason
         }
-        score += moat_score
+        buffett_score += moat_score
         if moat_score > 0:
-            reasons.append(moat_reason)
+            buffett_reasons.append(moat_reason)
         elif moat_score < 0:
             warnings.append(moat_reason)
 
-        management_score, management_reason = analyze_owner_oriented_management(symbol, data)
-        qualitative_factors['owner_oriented_management'] = {
-            'score': management_score,
-            'reason': management_reason
+        # ----- CALCULATE INTRINSIC VALUE -----
+        alternative_valuation_methods = calculate_intrinsic_value_alternative(data)
+        intrinsic_value, margin_of_safety, valuation_methods = calculate_final_intrinsic_value(
+            data, alternative_valuation_methods)
+
+        if intrinsic_value and intrinsic_value > 0:
+            data['intrinsic_value'] = intrinsic_value
+            data['margin_of_safety'] = margin_of_safety
+            data['valuation_methods'] = valuation_methods
+
+        # ----- TECHNICAL ANALYSIS (OPTIONAL) -----
+
+        # 1. Analyze technical indicators
+        tech_score, tech_reasons, tech_warnings = analyze_technical_indicators(symbol, data)
+        technical_score += tech_score
+        technical_reasons.extend(tech_reasons)
+        warnings.extend(tech_warnings)
+
+        # 2. Sector comparison (using available metrics)
+        sector_score, sector_reasons, sector_warnings = analyze_sector_performance(symbol, data, stock_data)
+        technical_score += sector_score
+        technical_reasons.extend(sector_reasons)
+        warnings.extend(sector_warnings)
+
+        # 3. Ownership analysis (if available)
+        ownership_score, ownership_reasons, ownership_warnings = analyze_ownership_patterns(symbol, data)
+        technical_score += ownership_score
+        technical_reasons.extend(ownership_reasons)
+        warnings.extend(ownership_warnings)
+
+        # 4. Corporate actions analysis
+        corporate_score, corporate_reasons, corporate_warnings = analyze_corporate_actions(symbol, data)
+        technical_score += corporate_score
+        technical_reasons.extend(corporate_reasons)
+        warnings.extend(corporate_warnings)
+
+        # ----- CALCULATE TOTAL SCORE -----
+        total_score = buffett_score + technical_score
+
+        # Record detailed analysis for all stocks
+        detailed_analysis[symbol] = {
+            'name': data['name'],
+            'sector': data.get('sector', 'Unknown'),
+            'buffett_score': buffett_score,
+            'technical_score': technical_score,
+            'total_score': total_score,
+            'buffett_reasons': buffett_reasons,
+            'technical_reasons': technical_reasons,
+            'warnings': warnings,
+            'missing_data': missing_data
         }
-        score += management_score
-        if management_score > 0:
-            reasons.append(management_reason)
-        elif management_score < 0:
-            warnings.append(management_reason)
 
-        raw_api_debt = data.get('debtToEquity', 'Not in API')
-        actual_debt_to_equity = data.get('debt_to_equity', 'N/A')
-        data_quality_issues.append(f"API debtToEquity: {raw_api_debt}, Used value: {actual_debt_to_equity}")
-
-        if score >= 14:
+        # Add to picks if it meets the threshold
+        if total_score >= 10:
             buffett_picks[symbol] = {
                 'name': data['name'],
                 'sector': data.get('sector', 'Unknown'),
@@ -764,22 +1001,38 @@ def buffett_analysis(stock_data):
                 'pe_ratio': data.get('pe_ratio', 0),
                 'roe': data.get('roe', 0),
                 'debt_to_equity': data.get('debt_to_equity', 0),
-                'raw_api_debt': raw_api_debt,
                 'market_cap': data.get('market_cap', 0),
-                'score': score,
-                'reasons': reasons,
+                'buffett_score': buffett_score,
+                'technical_score': technical_score,
+                'total_score': total_score,
+                'buffett_reasons': buffett_reasons,
+                'technical_reasons': technical_reasons,
                 'warnings': warnings,
                 'missing_data': missing_data,
-                'data_quality_issues': data_quality_issues,
                 'qualitative_factors': qualitative_factors,
-                'valuation_methods': data.get('valuation_methods', {})
+                'valuation_methods': data.get('valuation_methods', {}),
+                'technical_indicators': {
+                    'rsi': data.get('rsi'),
+                    'ma_50': data.get('ma_50'),
+                    'ma_200': data.get('ma_200'),
+                    'macd_line': data.get('macd_line'),
+                    'macd_signal': data.get('macd_signal'),
+                    'macd_histogram': data.get('macd_histogram')
+                }
             }
 
-    sorted_picks = dict(sorted(buffett_picks.items(), key=lambda x: x[1]['score'], reverse=True))
+    # Save detailed analysis for all stocks
+    os.makedirs('data', exist_ok=True)
+    with open('data/detailed_analysis.json', 'w') as f:
+        json.dump(detailed_analysis, f, indent=2)
+
+    # Sort picks by total score
+    sorted_picks = dict(sorted(buffett_picks.items(), key=lambda x: x[1]['total_score'], reverse=True))
     return sorted_picks
 
 
 def increment_visit_count():
+    """Track the number of visits to the analysis page"""
     visit_file = 'data/visit_counter.json'
     today = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d')
 
@@ -790,28 +1043,27 @@ def increment_visit_count():
         else:
             visit_data = {'total_visits': 0, 'daily_visits': {}}
 
-        
         visit_data['total_visits'] += 1
 
-        
         if today in visit_data['daily_visits']:
             visit_data['daily_visits'][today] += 1
         else:
             visit_data['daily_visits'][today] = 1
 
-        
         with open(visit_file, 'w') as f:
             json.dump(visit_data, f, indent=2)
 
         return visit_data['total_visits'], visit_data['daily_visits'][today]
-    except:
+    except Exception as e:
+        print(f"Error tracking visits: {e}")
         return 1, 1
 
 
 def generate_html_report(buffett_picks):
+    """Generate HTML report of Buffett picks"""
     total_visits, today_visits = increment_visit_count()
 
-    
+    # Format time
     ist_time = datetime.now(pytz.timezone('Asia/Kolkata'))
     formatted_time = ist_time.strftime("%I:%M %p, %d %b %Y")
 
@@ -821,7 +1073,7 @@ def generate_html_report(buffett_picks):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Indian Stock Picks-Disclaimer Not investment advise do your own analysis and research </title>
+        <title>Enhanced Indian Stock Analysis - Buffett + Technical- Disclaimer:Not investment advice do your own research and analysis </title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
         <style>
@@ -863,6 +1115,10 @@ def generate_html_report(buffett_picks):
                 background-color: #FFD700;
                 color: #212529;
             }
+            .badge-technical {
+                background-color: #20c997;
+                color: #212529;
+            }
             .ticker-symbol {
                 font-weight: bold;
                 color: #0d6efd;
@@ -870,6 +1126,12 @@ def generate_html_report(buffett_picks):
             }
             .qualitative-section {
                 background-color: #f8f9fa;
+                border-radius: 8px;
+                padding: 12px;
+                margin-top: 15px;
+            }
+            .technical-section {
+                background-color: #e9f7f2;
                 border-radius: 8px;
                 padding: 12px;
                 margin-top: 15px;
@@ -929,14 +1191,53 @@ def generate_html_report(buffett_picks):
                 text-align: right;
                 margin-bottom: 10px;
             }
+            .score-pill {
+                display: inline-block;
+                padding: 6px 12px;
+                border-radius: 20px;
+                margin-right: 5px;
+                font-weight: bold;
+                text-align: center;
+                min-width: 80px;
+            }
+            .nav-tabs .nav-link {
+                border-radius: 8px 8px 0 0;
+            }
+            .nav-tabs .nav-link.active {
+                font-weight: bold;
+            }
+            .data-warning-badge {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+                font-weight: 600;
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                border-radius: 50px;
+                background-color: #fff3cd;
+                color: #664d03;
+                border: 1px solid #ffe69c;
+                z-index: 10;
+            }
+            .warning-icon {
+                color: #dc3545;
+                margin-right: 5px;
+            }
+            .disclaimer-badge {
+                font-size: 0.75rem;
+                display: inline-block;
+                margin-left: 8px;
+                padding: 2px 6px;
+                border-radius: 4px;
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="row mt-4 mb-2">
                 <div class="col-md-8">
-                    <h1 class="display-4">Warren Buffett Indian Stock Picks</h1>
-                    <p class="text-muted">Last updated: """ + formatted_time + """</p>
+                    <h1 class="display-4">Enhanced Indian Stock Analysis</h1>
+                    <p class="text-muted">Combining Buffett's principles with technical indicators | Last updated: """ + formatted_time + """</p>
                 </div>
                 <div class="col-md-4">
                     <div class="visit-counter text-end">
@@ -944,6 +1245,13 @@ def generate_html_report(buffett_picks):
                         <span><i class="bi bi-graph-up"></i> Total: """ + str(total_visits) + """ visits</span>
                     </div>
                 </div>
+            </div>
+
+            <div class="alert alert-warning">
+                <strong><i class="bi bi-exclamation-triangle-fill"></i> Data Quality Disclaimer:</strong> 
+                This analysis relies on the accuracy of data from various sources. When metrics are missing or suspicious values are detected, 
+                a warning flag <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i></span> will be displayed. 
+                Always verify important data points before making investment decisions.
             </div>
 
             <div class="buffett-quote">
@@ -959,31 +1267,66 @@ def generate_html_report(buffett_picks):
             </div>
 
             <div class="filters p-3 mb-4">
-                <h5>Buffett's Key Investment Principles:</h5>
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Quantitative Factors:</h6>
-                        <ol>
-                            <li>Circle of Competence: Only invest in businesses you understand</li>
-                            <li>Margin of Safety: Buy companies at a significant discount to intrinsic value</li>
-                            <li>Financial Strength: Low debt, high ROE, consistent earnings</li>
-                            <li>Economic Moat: Companies with sustainable competitive advantages</li>
-                        </ol>
+                <ul class="nav nav-tabs" id="analysisTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="buffett-tab" data-bs-toggle="tab" data-bs-target="#buffett-principles" type="button" role="tab">Buffett's Principles</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="technical-tab" data-bs-toggle="tab" data-bs-target="#technical-factors" type="button" role="tab">Technical Factors</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content pt-3" id="analysisTabsContent">
+                    <div class="tab-pane fade show active" id="buffett-principles" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Quantitative Factors:</h6>
+                                <ol>
+                                    <li>Circle of Competence: Only invest in businesses you understand</li>
+                                    <li>Margin of Safety: Buy companies at a significant discount to intrinsic value</li>
+                                    <li>Financial Strength: Low debt, high ROE, consistent earnings</li>
+                                    <li>Economic Moat: Companies with sustainable competitive advantages</li>
+                                </ol>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Qualitative Factors:</h6>
+                                <ol>
+                                    <li>Industry Dynamics: Understanding competitive forces in the industry</li>
+                                    <li>Regulatory Environment: Assessing impact of regulations on business</li>
+                                    <li>Macroeconomic Factors: Considering overall economic outlook</li>
+                                    <li>Corporate Governance: Management transparency and accountability</li>
+                                    <li>India Cultural Fit: Local market understanding and adaptation</li>
+                                    <li>Economic Moat: Sustainable competitive advantages</li>
+                                    <li>Owner-Oriented Management: Insider ownership and capital allocation</li>
+                                </ol>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <h6>Qualitative Factors:</h6>
-                        <ol>
-                            <li>Industry Dynamics: Understanding competitive forces in the industry</li>
-                            <li>Regulatory Environment: Assessing impact of regulations on business</li>
-                            <li>Macroeconomic Factors: Considering overall economic outlook</li>
-                            <li>Corporate Governance: Management transparency and accountability</li>
-                            <li>India Cultural Fit: Local market understanding and adaptation</li>
-                            <li>Economic Moat: Sustainable competitive advantages</li>
-                            <li>Owner-Oriented Management: Insider ownership and capital allocation</li>
-                        </ol>
+                    <div class="tab-pane fade" id="technical-factors" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Technical Indicators:</h6>
+                                <ol>
+                                    <li>RSI (Relative Strength Index): Identifies overbought/oversold conditions</li>
+                                    <li>Moving Averages: 50-day and 200-day for trends and support/resistance</li>
+                                    <li>MACD: Momentum assessment and signal crossovers</li>
+                                </ol>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Additional Analysis:</h6>
+                                <ol>
+                                    <li>Sector Performance: Comparison against sector averages</li>
+                                    <li>Institutional Ownership: Changes in FII and DII holdings</li>
+                                    <li>Corporate Actions: Dividends, buybacks, and shareholder returns</li>
+                                    <li>Historical Valuations: Analysis of 5-year valuation ranges</li>
+                                    <li>Competitive Analysis: Peer comparison and market position</li>
+                                </ol>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <p class="small mb-0">Stocks are scored based on how well they align with these principles. Minimum score threshold: 12 points.</p>
+
+                <p class="small mb-0 mt-3">Stocks are scored based on both fundamental Buffett principles and technical indicators. Minimum threshold: 10 total points.</p>
             </div>
 
             <div class="row" id="stockContainer">
@@ -995,7 +1338,7 @@ def generate_html_report(buffett_picks):
     html += f"""
             <div class="col-12 mb-4">
                 <div class="alert alert-info">
-                    <strong>Found {len(buffett_picks)} companies</strong> matching Warren Buffett's investment criteria 
+                    <strong>Found {len(buffett_picks)} companies</strong> matching enhanced investment criteria 
                     with a combined market cap of ₹{total_market_cap_billions:,.2f} billion.
                 </div>
             </div>
@@ -1015,29 +1358,61 @@ def generate_html_report(buffett_picks):
         roe = data.get('roe', 0) or 0
         debt_to_equity = data.get('debt_to_equity', 0) or 0
 
-        raw_api_debt = data.get('raw_api_debt', 'N/A')
+        buffett_score = data.get('buffett_score', 0) or 0
+        technical_score = data.get('technical_score', 0) or 0
+        total_score = data.get('total_score', 0) or 0
 
-        score = data.get('score', 0) or 0
-        score_class = "success"
-        if score >= 15:
-            score_class = "success"
-            score_text = "Excellent"
-        elif score >= 12:
-            score_class = "primary"
-            score_text = "Very Good"
-        elif score >= 10:
-            score_class = "info"
-            score_text = "Good"
+        buffett_class = "success"
+        if buffett_score >= 15:
+            buffett_class = "success"
+            buffett_text = "Excellent"
+        elif buffett_score >= 12:
+            buffett_class = "primary"
+            buffett_text = "Very Good"
+        elif buffett_score >= 10:
+            buffett_class = "info"
+            buffett_text = "Good"
         else:
-            score_class = "secondary"
-            score_text = "Fair"
+            buffett_class = "secondary"
+            buffett_text = "Fair"
+
+        technical_class = "success"
+        if technical_score >= 10:
+            technical_class = "success"
+            technical_text = "Excellent"
+        elif technical_score >= 7:
+            technical_class = "primary"
+            technical_text = "Very Good"
+        elif technical_score >= 4:
+            technical_class = "info"
+            technical_text = "Good"
+        else:
+            technical_class = "secondary"
+            technical_text = "Fair"
+
+        total_class = "success"
+        if total_score >= 25:
+            total_class = "success"
+            total_text = "Excellent"
+        elif total_score >= 20:
+            total_class = "primary"
+            total_text = "Very Good"
+        elif total_score >= 15:
+            total_class = "info"
+            total_text = "Good"
+        else:
+            total_class = "secondary"
+            total_text = "Fair"
 
         qualitative_factors = data.get('qualitative_factors', {})
+        technical_indicators = data.get('technical_indicators', {})
 
         missing_data = data.get('missing_data', [])
-        data_quality_issues = data.get('data_quality_issues', [])
+        warnings_list = data.get('warnings', [])
+
         has_missing_data = len(missing_data) > 0
-        has_data_quality_issues = len(data_quality_issues) > 0
+        has_warnings = len(warnings_list) > 0
+        has_data_warnings = has_missing_data or has_warnings
 
         valuation_methods = data.get('valuation_methods', {})
         has_alternative_valuations = len(valuation_methods) > 0
@@ -1047,7 +1422,8 @@ def generate_html_report(buffett_picks):
                      data-name="{data['name'].lower()}" 
                      data-symbol="{display_symbol.lower()}"
                      data-sector="{data['sector'].lower()}">
-                    <div class="card stock-card">
+                    <div class="card stock-card position-relative">
+                        {f'<span class="data-warning-badge"><i class="bi bi-exclamation-triangle"></i> Data warnings</span>' if has_data_warnings else ''}
                         <div class="card-header">
                             <h5 class="card-title mb-0">{data['name']}</h5>
                             <div class="d-flex justify-content-between align-items-center">
@@ -1055,11 +1431,19 @@ def generate_html_report(buffett_picks):
                                     <span class="ticker-symbol" onclick="window.open('https://www.nseindia.com/get-quotes/equity?symbol={display_symbol}', '_blank')">{display_symbol}</span>
                                     <span class="badge bg-secondary">{exchange}</span>
                                 </div>
-                                <span class="badge bg-{score_class} badge-buffett">Buffett Score: {score:.1f} ({score_text})</span>
+                                <div>
+                                    <span class="badge bg-{total_class}">Total: {total_score:.1f}</span>
+                                </div>
                             </div>
                         </div>
                         <div class="card-body">
                             <h6 class="card-subtitle mb-3 text-muted">{data['sector']}</h6>
+
+                            <div class="d-flex justify-content-between mb-3">
+                                <span class="score-pill bg-warning bg-opacity-25">Buffett: {buffett_score:.1f}</span>
+                                <span class="score-pill bg-info bg-opacity-25">Technical: {technical_score:.1f}</span>
+                                <span class="score-pill bg-success bg-opacity-25">Total: {total_score:.1f}</span>
+                            </div>
         """
 
         if has_missing_data:
@@ -1067,21 +1451,6 @@ def generate_html_report(buffett_picks):
                             <div class="data-error mb-3">
                                 <strong><i class="bi bi-exclamation-triangle"></i> Missing Data:</strong> 
                                 <span>{', '.join(missing_data)}</span>
-                            </div>
-            """
-
-        if has_data_quality_issues:
-            html += f"""
-                            <div class="debug-info mb-3 collapsible-section" onclick="toggleSection(this)">
-                                <strong><i class="bi bi-bug"></i> Data Quality Info (Click to expand)</strong>
-                                <div class="collapsible-content">
-                                    <ul class="data-quality mt-2 mb-0">
-            """
-            for issue in data_quality_issues:
-                html += f"                                        <li>{issue}</li>\n"
-            html += """
-                                    </ul>
-                                </div>
                             </div>
             """
 
@@ -1093,7 +1462,10 @@ def generate_html_report(buffett_picks):
 
                             <div class="row mb-1">
                                 <div class="col-6">Intrinsic Value:</div>
-                                <div class="col-6 text-end fw-bold">₹{intrinsic_value:,.2f}</div>
+                                <div class="col-6 text-end fw-bold">
+                                    ₹{intrinsic_value:,.2f}
+                                    {f'<span class="disclaimer-badge bg-warning text-dark" data-bs-toggle="tooltip" title="Using multiple valuation methods"><i class="bi bi-info-circle"></i></span>' if has_alternative_valuations else ''}
+                                </div>
                             </div>
 
                             <div class="row mb-1">
@@ -1113,7 +1485,7 @@ def generate_html_report(buffett_picks):
 
                             <div class="row mb-1">
                                 <div class="col-6">Debt-to-Equity:</div>
-                                <div class="col-6 text-end fw-bold">{debt_to_equity:.2f} <small class="text-muted">(API: {raw_api_debt})</small></div>
+                                <div class="col-6 text-end fw-bold">{debt_to_equity:.2f}</div>
                             </div>
 
                             <div class="row mb-1">
@@ -1121,6 +1493,62 @@ def generate_html_report(buffett_picks):
                                 <div class="col-6 text-end fw-bold">₹{market_cap_billions:.2f}B</div>
                             </div>
         """
+
+        # Display technical indicators if available
+        rsi = technical_indicators.get('rsi')
+        ma_50 = technical_indicators.get('ma_50')
+        ma_200 = technical_indicators.get('ma_200')
+        macd_line = technical_indicators.get('macd_line')
+        macd_signal = technical_indicators.get('macd_signal')
+
+        has_technical_data = any(v is not None for v in [rsi, ma_50, ma_200, macd_line, macd_signal])
+
+        if has_technical_data:
+            html += """
+                            <div class="technical-section mt-3 mb-3">
+                                <h6 class="mb-2"><i class="bi bi-graph-up"></i> Technical Indicators:</h6>
+                                <div class="row">
+            """
+
+            if rsi is not None:
+                rsi_class = "success" if 30 <= rsi <= 70 else "danger" if rsi > 70 else "warning"
+                html += f"""
+                                    <div class="col-4 text-center">
+                                        <small>RSI</small>
+                                        <div class="text-{rsi_class} fw-bold">{rsi:.1f}</div>
+                                    </div>
+                """
+
+            if ma_50 is not None and ma_200 is not None:
+                cross_type = "Golden" if ma_50 > ma_200 else "Death"
+                cross_class = "success" if ma_50 > ma_200 else "danger"
+                html += f"""
+                                    <div class="col-4 text-center">
+                                        <small>MA Cross</small>
+                                        <div class="text-{cross_class} fw-bold">{cross_type}</div>
+                                    </div>
+                """
+
+            if macd_line is not None and macd_signal is not None:
+                macd_status = "Bullish" if macd_line > macd_signal else "Bearish"
+                macd_class = "success" if macd_line > macd_signal else "danger"
+                html += f"""
+                                    <div class="col-4 text-center">
+                                        <small>MACD</small>
+                                        <div class="text-{macd_class} fw-bold">{macd_status}</div>
+                                    </div>
+                """
+
+            html += """
+                                </div>
+                            </div>
+            """
+        else:
+            html += """
+                            <div class="alert alert-secondary mt-3 mb-3 py-2">
+                                <small><i class="bi bi-info-circle"></i> Technical indicator data not available</small>
+                            </div>
+            """
 
         if has_alternative_valuations:
             html += """
@@ -1143,125 +1571,85 @@ def generate_html_report(buffett_picks):
                             </div>
             """
 
-        html += f"""
-                            <h6 class="mt-4 mb-2">Why Buffett Would Like It:</h6>
-                            <ul class="reasons">
-        """
-
-        for reason in data.get('reasons', []):
-            html += f"                                <li>{reason}</li>\n"
-
+        # Add tabbed content for Buffett and Technical reasons
         html += """
+                            <ul class="nav nav-tabs mt-4" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#buffett-reasons-""" + display_symbol + """" type="button" role="tab">Buffett Analysis</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#technical-reasons-""" + display_symbol + """" type="button" role="tab">Technical Analysis</button>
+                                </li>
                             </ul>
 
-                            <div class="qualitative-section">
-                                <h6 class="mb-2">Qualitative Assessment:</h6>
+                            <div class="tab-content mt-3">
+                                <div class="tab-pane fade show active" id="buffett-reasons-""" + display_symbol + """" role="tabpanel">
+                                    <h6 class="mb-2">Why Buffett Would Like It:</h6>
         """
 
-        if 'industry_dynamics' in qualitative_factors:
-            industry = qualitative_factors['industry_dynamics']
-            score_class = "positive-score" if industry['score'] > 0 else "negative-score" if industry[
-                                                                                                 'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Industry Dynamics:</strong>
-                                    <span class="qualitative-score {score_class}">{industry['score']}</span>
-                                    <div>{industry['reason']}</div>
-                                </div>
+        buffett_reasons = data.get('buffett_reasons', [])
+        if buffett_reasons:
+            html += """
+                                    <ul class="reasons">
             """
-
-        if 'regulatory_environment' in qualitative_factors:
-            regulatory = qualitative_factors['regulatory_environment']
-            score_class = "positive-score" if regulatory['score'] > 0 else "negative-score" if regulatory[
-                                                                                                   'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Regulatory Environment:</strong>
-                                    <span class="qualitative-score {score_class}">{regulatory['score']}</span>
-                                    <div>{regulatory['reason']}</div>
-                                </div>
+            for reason in buffett_reasons:
+                html += f"                                        <li>{reason}</li>\n"
+            html += """
+                                    </ul>
             """
-
-        if 'macroeconomic_factors' in qualitative_factors:
-            macro = qualitative_factors['macroeconomic_factors']
-            score_class = "positive-score" if macro['score'] > 0 else "negative-score" if macro[
-                                                                                              'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Macroeconomic Factors:</strong>
-                                    <span class="qualitative-score {score_class}">{macro['score']}</span>
-                                    <div>{macro['reason']}</div>
-                                </div>
-            """
-
-        if 'corporate_governance' in qualitative_factors:
-            governance = qualitative_factors['corporate_governance']
-            score_class = "positive-score" if governance['score'] > 0 else "negative-score" if governance[
-                                                                                                   'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Corporate Governance:</strong>
-                                    <span class="qualitative-score {score_class}">{governance['score']}</span>
-                                    <div>{governance['reason']}</div>
-                                </div>
-            """
-
-        if 'india_cultural_fit' in qualitative_factors:
-            india_fit = qualitative_factors['india_cultural_fit']
-            score_class = "positive-score" if india_fit['score'] > 0 else "negative-score" if india_fit[
-                                                                                                  'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>India Cultural Fit:</strong>
-                                    <span class="qualitative-score {score_class}">{india_fit['score']}</span>
-                                    <div>{india_fit['reason']}</div>
-                                </div>
-            """
-
-        if 'economic_moat' in qualitative_factors:
-            moat = qualitative_factors['economic_moat']
-            score_class = "positive-score" if moat['score'] > 0 else "negative-score" if moat[
-                                                                                             'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Economic Moat:</strong>
-                                    <span class="qualitative-score {score_class}">{moat['score']}</span>
-                                    <div>{moat['reason']}</div>
-                                </div>
-            """
-
-        if 'owner_oriented_management' in qualitative_factors:
-            management = qualitative_factors['owner_oriented_management']
-            score_class = "positive-score" if management['score'] > 0 else "negative-score" if management[
-                                                                                                   'score'] < 0 else "neutral-score"
-            html += f"""
-                                <div class="qualitative-item">
-                                    <strong>Owner-Oriented Management:</strong>
-                                    <span class="qualitative-score {score_class}">{management['score']}</span>
-                                    <div>{management['reason']}</div>
-                                </div>
+        else:
+            html += """
+                                    <p class="text-muted"><small>No specific Buffett criteria found.</small></p>
             """
 
         html += """
+                                </div>
+                                <div class="tab-pane fade" id="technical-reasons-""" + display_symbol + """" role="tabpanel">
+                                    <h6 class="mb-2">Technical & Quantitative Factors:</h6>
+        """
+
+        technical_reasons = data.get('technical_reasons', [])
+        if technical_reasons:
+            html += """
+                                    <ul class="reasons">
+            """
+            for reason in technical_reasons:
+                html += f"                                        <li>{reason}</li>\n"
+            html += """
+                                    </ul>
+            """
+        else:
+            html += """
+                                    <p class="text-muted"><small>No technical analysis data available.</small></p>
+            """
+
+        html += """
+                                </div>
                             </div>
         """
 
-        if data.get('warnings', []):
+        if warnings_list:
             html += """
-                            <h6 class="mt-3 mb-2 text-danger">Potential Concerns:</h6>
-                            <ul class="warnings">
+                            <div class="mt-3">
+                                <h6 class="text-danger"><i class="bi bi-exclamation-triangle"></i> Potential Concerns:</h6>
+                                <ul class="warnings">
             """
 
-            for warning in data.get('warnings', []):
-                html += f"                                <li>{warning}</li>\n"
+            for warning in warnings_list:
+                html += f"                                    <li>{warning}</li>\n"
+
+            html += """
+                                </ul>
+                            </div>
+            """
 
         html += """
-                            </ul>
                         </div>
                     </div>
                 </div>
         """
 
+    # Close the container and add scripts
     html += """
             </div>
 
@@ -1269,37 +1657,42 @@ def generate_html_report(buffett_picks):
                 <div class="col-12">
                     <div class="card">
                         <div class="card-body">
-                            <h4>Warren Buffett's Investment Philosophy</h4>
-                            <p>Warren Buffett, often called the "Oracle of Omaha," follows a disciplined value investing approach based on principles he learned from his mentor, Benjamin Graham. Buffett looks for companies with:</p>
+                            <h4>Enhanced Investment Philosophy</h4>
+                            <p>This analysis combines Warren Buffett's value investing approach with technical indicators and quantitative metrics to provide a comprehensive view of potential investments.</p>
 
                             <div class="row">
                                 <div class="col-md-6">
-                                    <h5>Quantitative Factors</h5>
+                                    <h5>Buffett's Value Approach</h5>
                                     <ul>
-                                        <li><strong>Simple, Understandable Business Models</strong>: Buffett only invests in businesses he can understand and evaluate.</li>
-                                        <li><strong>Consistent Operating History</strong>: Companies with a long track record of profitability and stability.</li>
-                                        <li><strong>Financial Strength</strong>: Low debt, high returns on equity, and consistent earnings power.</li>
-                                        <li><strong>Margin of Safety</strong>: Buying at a price significantly below intrinsic value to reduce risk.</li>
+                                        <li><strong>Simple, Understandable Business Models</strong></li>
+                                        <li><strong>Consistent Operating History</strong></li>
+                                        <li><strong>Financial Strength</strong></li>
+                                        <li><strong>Margin of Safety</strong></li>
+                                        <li><strong>Economic Moat</strong></li>
                                     </ul>
                                 </div>
 
                                 <div class="col-md-6">
-                                    <h5>Qualitative Factors</h5>
+                                    <h5>Technical & Quantitative Factors</h5>
                                     <ul>
-                                        <li><strong>Industry Dynamics</strong>: Buffett favors industries with stable demand and high barriers to entry.</li>
-                                        <li><strong>Regulatory Environment</strong>: He prefers businesses with minimal regulatory interference.</li>
-                                        <li><strong>Macroeconomic Resilience</strong>: Companies that can thrive in various economic conditions.</li>
-                                        <li><strong>Corporate Governance</strong>: Honest, capable management that allocates capital effectively.</li>
-                                        <li><strong>Local Market Adaptation</strong>: Understanding of cultural and regional market dynamics.</li>
-                                        <li><strong>Economic Moat Depth</strong>: Strong barriers to competition and sustainable advantages.</li>
-                                        <li><strong>Owner-Oriented Management</strong>: High insider ownership and shareholder-friendly policies.</li>
+                                        <li><strong>Technical Indicators</strong>: RSI, Moving Averages, MACD</li>
+                                        <li><strong>Sector Performance</strong>: Comparison against peers and sector trends</li>
+                                        <li><strong>Ownership Changes</strong>: Institutional buying and insider activity</li>
+                                        <li><strong>Historical Valuations</strong>: 5-year patterns and mean reversion potential</li>
+                                        <li><strong>Competitive Positioning</strong>: Industry standing and market share</li>
                                     </ul>
                                 </div>
                             </div>
 
-                            <p>Remember Buffett's famous quotes:</p>
-                            <div class="buffett-quote">"Be fearful when others are greedy, and greedy when others are fearful."</div>
-                            <div class="buffett-quote">"It's far better to buy a wonderful company at a fair price than a fair company at a wonderful price."</div>
+                            <div class="alert alert-warning mt-3">
+                                <strong>Data Quality Disclaimer:</strong> This analysis uses various data sources which may contain inaccuracies or missing information.
+                                When data appears suspicious or important metrics are missing, disclaimers are displayed. Always conduct your own research 
+                                and verify key metrics before making investment decisions.
+                            </div>
+
+                            <p>Remember these investment principles:</p>
+                            <div class="buffett-quote">"Be fearful when others are greedy, and greedy when others are fearful." - Warren Buffett</div>
+                            <div class="buffett-quote">"The trend is your friend until the end when it bends." - Ed Seykota</div>
                         </div>
                     </div>
                 </div>
@@ -1308,7 +1701,7 @@ def generate_html_report(buffett_picks):
 
         <footer class="bg-light py-3 mt-5">
             <div class="container text-center">
-                <p class="mb-0 text-muted">This analysis is for educational purposes only. Always do your own research before investing.</p>
+                <p class="mb-0 text-muted">This analysis is for educational purposes only. Always do your own research before making investment decisions.</p>
                 <p class="mb-0 text-muted small">Updated daily after market close.</p>
             </div>
         </footer>
@@ -1341,15 +1734,6 @@ def generate_html_report(buffett_picks):
                 });
             }
 
-            // Add click event for ticker symbols to open NSE page
-            document.addEventListener('DOMContentLoaded', function() {
-                const tickerSymbols = document.querySelectorAll('.ticker-symbol');
-                tickerSymbols.forEach(symbol => {
-                    symbol.style.cursor = 'pointer';
-                    symbol.title = 'Click to view on NSE website';
-                });
-            });
-
             // Toggle collapsible sections
             function toggleSection(element) {
                 const content = element.querySelector('.collapsible-content');
@@ -1359,6 +1743,27 @@ def generate_html_report(buffett_picks):
                     content.style.maxHeight = content.scrollHeight + "px";
                 }
             }
+
+            // Initialize tooltips
+            document.addEventListener('DOMContentLoaded', function() {
+                // Auto-expand collapsible sections with warnings for better visibility
+                const dataWarningCards = document.querySelectorAll('.stock-card:has(.data-warning-badge)');
+                dataWarningCards.forEach(card => {
+                    const collapsibles = card.querySelectorAll('.collapsible-section');
+                    collapsibles.forEach(section => {
+                        const content = section.querySelector('.collapsible-content');
+                        if (content) {
+                            content.style.maxHeight = content.scrollHeight + "px";
+                        }
+                    });
+                });
+
+                // Initialize tooltips
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+            });
         </script>
     </body>
     </html>
@@ -1369,12 +1774,12 @@ def generate_html_report(buffett_picks):
     with open('output/index.html', 'w') as f:
         f.write(html)
 
-    print("HTML report generated at output/index.html")
+    print("Enhanced HTML report generated at output/index.html")
 
 
 if __name__ == "__main__":
-    print("Starting  analysis")
+    print("Starting enhanced ")
     stock_data = load_latest_data()
     buffett_picks = buffett_analysis(stock_data)
     generate_html_report(buffett_picks)
-    print(f"Analysis complete. Found {len(buffett_picks)} stocks that match Buffett's criteria.")
+    print(f"Analysis complete. Found {len(buffett_picks)} stocks matching Buffett criteria.")
