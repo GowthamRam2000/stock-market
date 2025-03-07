@@ -285,6 +285,118 @@ def calculate_basic_technical_indicators(df):
         }
 
 
+def extract_growth_metrics(stock):
+    """
+    Calculate Year-over-Year and Quarter-over-Quarter growth metrics for:
+    - Revenue (Sales)
+    - Operating Income (Operating Profit)
+    - Net Income (Net Profit)
+    """
+    try:
+        # Get quarterly financials
+        quarterly_financials = stock.quarterly_financials
+        quarterly_income_stmt = stock.quarterly_income_stmt
+
+        # Get yearly financials
+        yearly_financials = stock.financials
+        yearly_income_stmt = stock.income_stmt
+
+        results = {}
+
+        # Function to calculate percentage change
+        def calculate_change(current, previous):
+            if previous and previous != 0:
+                return ((current / previous) - 1) * 100
+            return None
+
+        # ----- Extract YoY Metrics -----
+        try:
+            # Check if we have enough annual data (at least 2 years)
+            if not yearly_income_stmt.empty and yearly_income_stmt.shape[1] >= 2:
+                # Get the last two years
+                recent_year = yearly_income_stmt.iloc[:, 0]
+                previous_year = yearly_income_stmt.iloc[:, 1]
+
+                # Revenue (Sales) YoY
+                if 'Total Revenue' in yearly_income_stmt.index:
+                    curr_revenue = recent_year.loc['Total Revenue']
+                    prev_revenue = previous_year.loc['Total Revenue']
+                    results['revenue_yoy'] = calculate_change(curr_revenue, prev_revenue)
+
+                # Operating Income YoY
+                for field in ['Operating Income', 'EBIT', 'Operating Income/Loss']:
+                    if field in yearly_income_stmt.index:
+                        curr_op_income = recent_year.loc[field]
+                        prev_op_income = previous_year.loc[field]
+                        results['operating_profit_yoy'] = calculate_change(curr_op_income, prev_op_income)
+                        break
+
+                # Net Income YoY
+                for field in ['Net Income', 'Net Income From Continuing Operation Net Minority Interest',
+                              'Net Income Common Stockholders']:
+                    if field in yearly_income_stmt.index:
+                        curr_net_income = recent_year.loc[field]
+                        prev_net_income = previous_year.loc[field]
+                        results['net_profit_yoy'] = calculate_change(curr_net_income, prev_net_income)
+                        break
+            else:
+                print("Not enough annual data for YoY calculations")
+        except Exception as e:
+            print(f"Error calculating YoY metrics: {e}")
+
+        # ----- Extract QoQ Metrics -----
+        try:
+            # Check if we have enough quarterly data (at least 2 quarters)
+            if not quarterly_income_stmt.empty and quarterly_income_stmt.shape[1] >= 2:
+                # Get the last two quarters
+                recent_quarter = quarterly_income_stmt.iloc[:, 0]
+                previous_quarter = quarterly_income_stmt.iloc[:, 1]
+
+                # Revenue (Sales) QoQ
+                if 'Total Revenue' in quarterly_income_stmt.index:
+                    curr_q_revenue = recent_quarter.loc['Total Revenue']
+                    prev_q_revenue = previous_quarter.loc['Total Revenue']
+                    results['revenue_qoq'] = calculate_change(curr_q_revenue, prev_q_revenue)
+
+                # Operating Income QoQ
+                for field in ['Operating Income', 'EBIT', 'Operating Income/Loss']:
+                    if field in quarterly_income_stmt.index:
+                        curr_q_op_income = recent_quarter.loc[field]
+                        prev_q_op_income = previous_quarter.loc[field]
+                        results['operating_profit_qoq'] = calculate_change(curr_q_op_income, prev_q_op_income)
+                        break
+
+                # Net Income QoQ
+                for field in ['Net Income', 'Net Income From Continuing Operation Net Minority Interest',
+                              'Net Income Common Stockholders']:
+                    if field in quarterly_income_stmt.index:
+                        curr_q_net_income = recent_quarter.loc[field]
+                        prev_q_net_income = previous_quarter.loc[field]
+                        results['net_profit_qoq'] = calculate_change(curr_q_net_income, prev_q_net_income)
+                        break
+            else:
+                print("Not enough quarterly data for QoQ calculations")
+        except Exception as e:
+            print(f"Error calculating QoQ metrics: {e}")
+
+        # Add TTM (Trailing Twelve Months) Revenue growth if possible
+        try:
+            if not quarterly_income_stmt.empty and quarterly_income_stmt.shape[1] >= 5:
+                # Calculate TTM revenue for current and previous year
+                if 'Total Revenue' in quarterly_income_stmt.index:
+                    current_ttm = sum(quarterly_income_stmt.loc['Total Revenue'].iloc[0:4])
+                    previous_ttm = sum(quarterly_income_stmt.loc['Total Revenue'].iloc[4:8]) if \
+                    quarterly_income_stmt.shape[1] >= 8 else None
+
+                    if previous_ttm and previous_ttm > 0:
+                        results['revenue_ttm_yoy'] = calculate_change(current_ttm, previous_ttm)
+        except Exception as e:
+            print(f"Error calculating TTM metrics: {e}")
+
+        return results
+    except Exception as e:
+        print(f"Error extracting growth metrics: {e}")
+        return {}
 def process_single_stock(symbol):
     """Process a single stock with all required data"""
     try:
@@ -466,7 +578,7 @@ def process_single_stock(symbol):
         }, False
 
 
-def process_stocks(symbols_to_process, batch_size=20, max_runtime=None):
+def process_stocks(symbols_to_process, batch_size=25, max_runtime=None):
     """Process a list of stocks in batches with runtime checks"""
     print(f"Starting to process {len(symbols_to_process)} stocks...")
 
